@@ -16,10 +16,17 @@ var memStorage = MemStorage{map[string]float64{}, map[string]int64{}}
 func updateGauge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		return
 	}
 
-	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/gauge/")[1]
-	metricData := strings.Split(pathValues, "/")
+	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/gauge/")
+
+	if len(pathValues) == 1 {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+
+	metricData := strings.Split(pathValues[1], "/")
 
 	if len(metricData) != 2 {
 		http.Error(w, "Metric not found.", http.StatusNotFound)
@@ -39,10 +46,17 @@ func updateGauge(w http.ResponseWriter, r *http.Request) {
 func updateCounter(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
-	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/counter/")[1]
-	metricData := strings.Split(pathValues, "/")
+	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/counter/")
+
+	if len(pathValues) == 1 {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+
+	metricData := strings.Split(pathValues[1], "/")
 
 	if len(metricData) != 2 {
 		http.Error(w, "Metric not found.", http.StatusNotFound)
