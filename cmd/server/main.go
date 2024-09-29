@@ -22,7 +22,7 @@ func updateGauge(w http.ResponseWriter, r *http.Request) {
 	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/gauge/")
 
 	if len(pathValues) == 1 {
-		http.Error(w, "Bad request.", http.StatusBadRequest)
+		http.Error(w, "Metric not found.", http.StatusNotFound)
 		return
 	}
 
@@ -52,7 +52,7 @@ func updateCounter(w http.ResponseWriter, r *http.Request) {
 	pathValues := strings.Split(strings.Trim(r.URL.Path, "/"), "/counter/")
 
 	if len(pathValues) == 1 {
-		http.Error(w, "Bad request.", http.StatusBadRequest)
+		http.Error(w, "Metric not found.", http.StatusNotFound)
 		return
 	}
 
