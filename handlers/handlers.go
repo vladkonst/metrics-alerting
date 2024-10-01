@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/vladkonst/metrics-alerting/internal/repositories"
 	"github.com/vladkonst/metrics-alerting/internal/storage"
 )
 
@@ -34,7 +35,7 @@ func UpdateGauge(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
 		return
 	}
-	memStorage := storage.GetStorage()
+	var memStorage repositories.GaugeRepository = storage.GetStorage()
 	memStorage.AddGauge(metricData[0], v)
 
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
@@ -68,7 +69,7 @@ func UpdateCounter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	memStorage := storage.GetStorage()
+	var memStorage repositories.CounterRepository = storage.GetStorage()
 	memStorage.AddCounter(metricData[0], v)
 
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")

@@ -17,11 +17,11 @@ type MemStorage struct {
 
 var storage MemStorage
 
-func GetStorage() MemStorage {
+func GetStorage() *MemStorage {
 	if storage.gauges == nil {
 		storage = MemStorage{gauges: make(map[string]Gauge), counters: make(map[string]Counter)}
 	}
-	return storage
+	return &storage
 }
 
 func (m *MemStorage) AddCounter(name string, value int64) error {
