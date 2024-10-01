@@ -83,16 +83,19 @@ func sendCounterMetrics(m *Metrics) {
 
 func main() {
 	pollInterval := time.Duration(2)
-	reportInterval := time.Duration(10)
+	reportInterval := time.Duration(4)
 	metrics := Metrics{Gauges: make(map[string]float64)}
-
-	for {
-		select {
-		case <-time.After(pollInterval * time.Second):
+	ticker := time.NewTicker(reportInterval * time.Second)
+	go func() {
+		ticker := time.NewTicker(pollInterval * time.Second)
+		for range ticker.C {
 			metrics.updateGaugeMetrics()
-		case <-time.After(reportInterval * time.Second):
-			sendGaugeMetrics(&metrics)
-			sendCounterMetrics(&metrics)
 		}
+	}()
+
+	for range ticker.C {
+		sendGaugeMetrics(&metrics)
+		sendCounterMetrics(&metrics)
 	}
+
 }
