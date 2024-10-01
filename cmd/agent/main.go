@@ -7,13 +7,21 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
+	"sync"
 	"time"
 )
 
-func getGaugeMetrics() map[string]float64 {
+type Metrics struct {
+	mu        sync.Mutex
+	Gauges    map[string]float64
+	PollCount int
+}
+
+func (m *Metrics) updateGaugeMetrics() {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	gauges := map[string]float64{
+	m.mu.Lock()
+	m.Gauges = map[string]float64{
 		"Alloc":         float64(memStats.Alloc),
 		"BuckHashSys":   float64(memStats.BuckHashSys),
 		"Frees":         float64(memStats.Frees),
@@ -43,39 +51,48 @@ func getGaugeMetrics() map[string]float64 {
 		"TotalAlloc":    float64(memStats.TotalAlloc),
 		"RandomValue":   1.0 + rand.Float64()*9,
 	}
-	return gauges
+	m.PollCount++
+	m.mu.Unlock()
+}
+
+func sendGaugeMetrics(m *Metrics) {
+	for k, v := range m.Gauges {
+		resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/gauge/%v/%v", k, v), "text/plain", nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		resBody, _ := io.ReadAll(resp.Body)
+		log.Println(string(resBody))
+		log.Println(resp.StatusCode)
+		log.Println(resp.Header.Get("Content-Type"))
+		resp.Body.Close()
+	}
+}
+
+func sendCounterMetrics(m *Metrics) {
+	resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/counter/PollCount/%v", m.PollCount), "text/plain", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	resBody, _ := io.ReadAll(resp.Body)
+	log.Println(string(resBody))
+	log.Println(resp.StatusCode)
+	log.Println(resp.Header.Get("Content-Type"))
+	resp.Body.Close()
 }
 
 func main() {
-	PollCount := 0
-	pollInterval := 2
-	// reportInterval := 10
+	pollInterval := time.Duration(2)
+	reportInterval := time.Duration(10)
+	metrics := Metrics{Gauges: make(map[string]float64)}
+
 	for {
-		time.Sleep(time.Second * time.Duration(pollInterval))
-		gaugeMetrics := getGaugeMetrics()
-		PollCount++
-		if PollCount%5 == 0 {
-			for k, v := range gaugeMetrics {
-				resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/gauge/%v/%v", k, v), "text/plain", nil)
-				if err != nil {
-					log.Fatal(err)
-				}
-				resBody, _ := io.ReadAll(resp.Body)
-				log.Println(string(resBody))
-				log.Println(resp.StatusCode)
-				log.Println(resp.Header.Get("Content-Type"))
-				resp.Body.Close()
-			}
-			resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/counter/PollCount/%v", PollCount), "text/plain", nil)
-			if err != nil {
-				log.Fatal(err)
-			}
-			resBody, _ := io.ReadAll(resp.Body)
-			log.Println(string(resBody))
-			log.Println(resp.StatusCode)
-			log.Println(resp.Header.Get("Content-Type"))
-			resp.Body.Close()
+		select {
+		case <-time.After(pollInterval * time.Second):
+			metrics.updateGaugeMetrics()
+		case <-time.After(reportInterval * time.Second):
+			sendGaugeMetrics(&metrics)
+			sendCounterMetrics(&metrics)
 		}
 	}
-
 }
