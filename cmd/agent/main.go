@@ -83,7 +83,7 @@ func sendCounterMetrics(m *Metrics) {
 
 func main() {
 	pollInterval := time.Duration(2)
-	reportInterval := time.Duration(4)
+	reportInterval := time.Duration(10)
 	metrics := Metrics{Gauges: make(map[string]float64)}
 	ticker := time.NewTicker(reportInterval * time.Second)
 	go func() {
