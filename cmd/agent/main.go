@@ -18,9 +18,9 @@ type Metrics struct {
 }
 
 func (m *Metrics) updateGaugeMetrics() {
+	m.mu.Lock()
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	m.mu.Lock()
 	m.Gauges = map[string]float64{
 		"Alloc":         float64(memStats.Alloc),
 		"BuckHashSys":   float64(memStats.BuckHashSys),
