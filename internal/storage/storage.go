@@ -17,7 +17,7 @@ func GetStorage() *MemStorage {
 }
 
 func (m *MemStorage) AddCounter(name string, value int64) error {
-	m.Counters[name] = value
+	m.Counters[name] += value
 	return nil
 }
 
