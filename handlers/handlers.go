@@ -65,7 +65,7 @@ func GetCurrentMetricValue(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			io.WriteString(w, fmt.Sprintf("%.3f", gauge))
+			io.WriteString(w, fmt.Sprintf("%.g", gauge))
 		}
 	case "counter":
 		{
