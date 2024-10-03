@@ -82,20 +82,32 @@ func sendCounterMetrics(m *Metrics) {
 }
 
 func main() {
-	pollInterval := time.Duration(2)
-	reportInterval := time.Duration(10)
-	metrics := Metrics{Gauges: make(map[string]float64)}
-	ticker := time.NewTicker(reportInterval * time.Second)
-	go func() {
-		ticker := time.NewTicker(pollInterval * time.Second)
+	pollInterval := 2
+	reportInterval := 10
+	if reportInterval%pollInterval != 0 {
+		metrics := Metrics{Gauges: make(map[string]float64)}
+		ticker := time.NewTicker(time.Duration(reportInterval) * time.Second)
+		go func() {
+			ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+			for range ticker.C {
+				metrics.updateGaugeMetrics()
+			}
+		}()
+
+		for range ticker.C {
+			sendGaugeMetrics(&metrics)
+			sendCounterMetrics(&metrics)
+		}
+	} else {
+		metrics := Metrics{Gauges: make(map[string]float64)}
+		ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
 		for range ticker.C {
 			metrics.updateGaugeMetrics()
+			if (metrics.PollCount*pollInterval)%reportInterval == 0 {
+				sendGaugeMetrics(&metrics)
+				sendCounterMetrics(&metrics)
+			}
 		}
-	}()
-
-	for range ticker.C {
-		sendGaugeMetrics(&metrics)
-		sendCounterMetrics(&metrics)
 	}
 
 }
