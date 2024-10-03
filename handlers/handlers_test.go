@@ -89,6 +89,7 @@ func TestGetCurrentMetricValue(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			res := testRequest(t, ts, "GET", test.request)
+			defer res.Body.Close()
 			assert.Equal(t, test.want.statusCode, res.StatusCode)
 			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
 		})
@@ -176,6 +177,7 @@ func TestUpdateMetric(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			res := testRequest(t, ts, "POST", test.request)
+			defer res.Body.Close()
 			assert.Equal(t, test.want.statusCode, res.StatusCode)
 			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
 		})

@@ -65,8 +65,7 @@ func GetCurrentMetricValue(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			io.WriteString(w, fmt.Sprintf("%f", gauge))
-			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, fmt.Sprintf("%.3f", gauge))
 		}
 	case "counter":
 		{
@@ -78,7 +77,6 @@ func GetCurrentMetricValue(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 			io.WriteString(w, fmt.Sprintf("%d", counter))
-			w.WriteHeader(http.StatusOK)
 		}
 	default:
 		{
@@ -100,7 +98,6 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request) {
 			var memStorage repositories.GaugeRepository = storage.GetStorage()
 			memStorage.AddGauge(chi.URLParam(r, "name"), v)
 			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
 		}
 	case "counter":
 		{
@@ -112,7 +109,6 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request) {
 			var memStorage repositories.CounterRepository = storage.GetStorage()
 			memStorage.AddCounter(chi.URLParam(r, "name"), v)
 			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
 		}
 	default:
 		{

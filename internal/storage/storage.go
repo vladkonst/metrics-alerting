@@ -17,9 +17,7 @@ func GetStorage() *MemStorage {
 }
 
 func (m *MemStorage) AddCounter(name string, value int64) error {
-	counter := m.Counters[name]
-	counter = value
-	m.Counters[name] = counter
+	m.Counters[name] = value
 	return nil
 }
 
@@ -37,9 +35,7 @@ func (m *MemStorage) RemoveCounter(name string) error {
 }
 
 func (m *MemStorage) AddGauge(name string, value float64) error {
-	gauge := m.Gauges[name]
-	gauge = value
-	m.Gauges[name] = gauge
+	m.Gauges[name] = value
 	return nil
 }
 
