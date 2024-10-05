@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
 type Metrics struct {
@@ -55,9 +58,9 @@ func (m *Metrics) updateGaugeMetrics() {
 	m.mu.Unlock()
 }
 
-func sendGaugeMetrics(m *Metrics) {
+func sendGaugeMetrics(serverAddr *models.NetAddress, m *Metrics) {
 	for k, v := range m.Gauges {
-		resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/gauge/%v/%v", k, v), "text/plain", nil)
+		resp, err := http.Post(fmt.Sprintf("http://%s/update/gauge/%v/%v", serverAddr.String(), k, v), "text/plain", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -69,8 +72,8 @@ func sendGaugeMetrics(m *Metrics) {
 	}
 }
 
-func sendCounterMetrics(m *Metrics) {
-	resp, err := http.Post(fmt.Sprintf("http://localhost:8080/update/counter/PollCount/%v", m.PollCount), "text/plain", nil)
+func sendCounterMetrics(serverAddr *models.NetAddress, m *Metrics) {
+	resp, err := http.Post(fmt.Sprintf("http://%s/update/counter/PollCount/%v", serverAddr.String(), m.PollCount), "text/plain", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,20 +85,23 @@ func sendCounterMetrics(m *Metrics) {
 }
 
 func main() {
-	pollInterval := 2
-	reportInterval := 10
+	pollInterval := flag.Int("p", 2, "poll interval in seconds")
+	reportInterval := flag.Int("r", 10, "report interval in seconds")
+	addr := &models.NetAddress{Host: "localhost", Port: 8080}
+	flag.Var(addr, "a", "Server net address host:port")
+	flag.Parse()
 
 	metrics := Metrics{Gauges: make(map[string]float64)}
-	ticker := time.NewTicker(time.Duration(reportInterval) * time.Second)
+	ticker := time.NewTicker(time.Duration(*reportInterval) * time.Second)
 	go func() {
-		ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+		ticker := time.NewTicker(time.Duration(*pollInterval) * time.Second)
 		for range ticker.C {
 			metrics.updateGaugeMetrics()
 		}
 	}()
 
 	for range ticker.C {
-		sendGaugeMetrics(&metrics)
-		sendCounterMetrics(&metrics)
+		sendGaugeMetrics(addr, &metrics)
+		sendCounterMetrics(addr, &metrics)
 	}
 }
