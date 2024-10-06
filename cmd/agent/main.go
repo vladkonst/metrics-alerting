@@ -41,9 +41,9 @@ func main() {
 	intervalsCfg := flags.GetIntervalsCfg()
 	addr := flags.GetNetAddress()
 	metrics := metrics.Metrics{Gauges: make(map[string]float64)}
-	ticker := time.NewTicker(time.Duration(*&intervalsCfg.ReportInterval) * time.Second)
+	ticker := time.NewTicker(time.Duration(intervalsCfg.ReportInterval) * time.Second)
 	go func() {
-		ticker := time.NewTicker(time.Duration(*&intervalsCfg.ReportInterval) * time.Second)
+		ticker := time.NewTicker(time.Duration(intervalsCfg.ReportInterval) * time.Second)
 		for range ticker.C {
 			metrics.UpdateGaugeMetrics()
 		}
