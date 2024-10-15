@@ -58,6 +58,9 @@ func GetRouter() chi.Router {
 			})
 			r.Get("/{name}", handlers.NewCounterStorageProvider(handlers.GetCounterMetricValue).ServeHTTP)
 		})
+		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Invalid metric type", http.StatusBadRequest)
+		})
 	})
 
 	r.Route("/update", func(r chi.Router) {
@@ -120,6 +123,9 @@ func GetRouter() chi.Router {
 					http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 				})
 			})
+		})
+		r.Post("/*", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Invalid metric type", http.StatusBadRequest)
 		})
 	})
 
