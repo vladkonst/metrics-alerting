@@ -21,9 +21,15 @@ func (n *NetAddressCfg) Set(s string) error {
 	if len(hp) != 2 {
 		return errors.New("need address in a form host:port")
 	}
-	ip := net.ParseIP(hp[0])
-	if ip == nil {
-		return errors.New("can't validate provided IP")
+	var ip string
+	if hp[0] == "localhost" || hp[0] == "" {
+		ip = hp[0]
+	} else {
+		ip = net.ParseIP(hp[0]).String()
+		if ip == "<nil>" {
+
+			return errors.New("can't validate provided IP")
+		}
 	}
 	port, err := strconv.Atoi(hp[1])
 	if err != nil {
@@ -33,7 +39,7 @@ func (n *NetAddressCfg) Set(s string) error {
 		return errors.New("can't validate provided port number")
 	}
 
-	n.Host = hp[0]
+	n.Host = ip
 	n.Port = port
 	return nil
 }
