@@ -8,9 +8,47 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/vladkonst/metrics-alerting/internal/repositories"
+
 	"github.com/vladkonst/metrics-alerting/internal/storage"
 )
+
+type GaugeRepository interface {
+	AddGauge(name string, value float64) error
+	GetGauge(name string) (float64, error)
+}
+
+type CounterRepository interface {
+	AddCounter(name string, value int64) error
+	GetCounter(name string) (int64, error)
+}
+
+type GaugeStorageProvider struct {
+	handler    func(http.ResponseWriter, *http.Request, GaugeRepository)
+	memStorage GaugeRepository
+}
+
+func NewGaugeStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, GaugeRepository)) *GaugeStorageProvider {
+	var memStorage GaugeRepository = storage.GetStorage()
+	return &GaugeStorageProvider{handlerToWrap, memStorage}
+}
+
+func (sp *GaugeStorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sp.handler(w, r, sp.memStorage)
+}
+
+type CounterStorageProvider struct {
+	handler    func(http.ResponseWriter, *http.Request, CounterRepository)
+	memStorage CounterRepository
+}
+
+func NewCounterStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, CounterRepository)) *CounterStorageProvider {
+	var memStorage CounterRepository = storage.GetStorage()
+	return &CounterStorageProvider{handlerToWrap, memStorage}
+}
+
+func (sp *CounterStorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sp.handler(w, r, sp.memStorage)
+}
 
 func GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 	memStorage := storage.GetStorage()
@@ -54,66 +92,42 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 }
 
-func GetCurrentMetricValue(w http.ResponseWriter, r *http.Request) {
-	switch chi.URLParam(r, "type") {
-	case "gauge":
-		{
-			var memStorage repositories.GaugeRepository = storage.GetStorage()
-			gauge, err := memStorage.GetGauge(chi.URLParam(r, "name"))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusNotFound)
-				return
-			}
-			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			io.WriteString(w, fmt.Sprintf("%g", gauge))
-		}
-	case "counter":
-		{
-			var memStorage repositories.CounterRepository = storage.GetStorage()
-			counter, err := memStorage.GetCounter(chi.URLParam(r, "name"))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusNotFound)
-				return
-			}
-			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-			io.WriteString(w, fmt.Sprintf("%d", counter))
-		}
-	default:
-		{
-			http.Error(w, "Bad request.", http.StatusBadRequest)
-			return
-		}
+func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage GaugeRepository) {
+	gauge, err := memStorage.GetGauge(chi.URLParam(r, "name"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, fmt.Sprintf("%g", gauge))
 }
 
-func UpdateMetric(w http.ResponseWriter, r *http.Request) {
-	switch chi.URLParam(r, "type") {
-	case "gauge":
-		{
-			v, err := strconv.ParseFloat(chi.URLParam(r, "value"), 64)
-			if err != nil {
-				http.Error(w, "Bad request.", http.StatusBadRequest)
-				return
-			}
-			var memStorage repositories.GaugeRepository = storage.GetStorage()
-			memStorage.AddGauge(chi.URLParam(r, "name"), v)
-			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-		}
-	case "counter":
-		{
-			v, err := strconv.ParseInt(chi.URLParam(r, "value"), 10, 64)
-			if err != nil {
-				http.Error(w, "Bad request.", http.StatusBadRequest)
-				return
-			}
-			var memStorage repositories.CounterRepository = storage.GetStorage()
-			memStorage.AddCounter(chi.URLParam(r, "name"), v)
-			w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-		}
-	default:
-		{
-			http.Error(w, "Bad request.", http.StatusBadRequest)
-			return
-		}
+func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage CounterRepository) {
+	counter, err := memStorage.GetCounter(chi.URLParam(r, "name"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, fmt.Sprintf("%d", counter))
+}
+
+func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage GaugeRepository) {
+	v, err := strconv.ParseFloat(chi.URLParam(r, "value"), 64)
+	if err != nil {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+	memStorage.AddGauge(chi.URLParam(r, "name"), v)
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+}
+
+func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage CounterRepository) {
+	v, err := strconv.ParseInt(chi.URLParam(r, "value"), 10, 64)
+	if err != nil {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+	memStorage.AddCounter(chi.URLParam(r, "name"), v)
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 }
