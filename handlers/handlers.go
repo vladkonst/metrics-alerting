@@ -6,11 +6,47 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vladkonst/metrics-alerting/internal/logger"
 	"github.com/vladkonst/metrics-alerting/internal/storage"
 )
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+	size   int
+}
+
+func (r *loggingResponseWriter) Write(b []byte) (int, error) {
+	size, err := r.ResponseWriter.Write(b)
+	r.size += size
+	return size, err
+}
+
+func (r *loggingResponseWriter) WriteHeader(statusCode int) {
+	r.ResponseWriter.WriteHeader(statusCode)
+	r.status = statusCode
+}
+
+func LogRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		logger := logger.Get()
+		lw := loggingResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(&lw, r)
+		logger.
+			Info().
+			Str("method", r.Method).
+			Str("URI", r.URL.RequestURI()).
+			Dur("duration", time.Since(start)).
+			Int("status", lw.size).
+			Int("size", lw.status).
+			Msg("incoming request")
+	})
+}
 
 type GaugeRepository interface {
 	AddGauge(name string, value float64) error

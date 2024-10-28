@@ -8,7 +8,7 @@ import (
 	"github.com/vladkonst/metrics-alerting/handlers"
 )
 
-func GetRouter() chi.Router {
+func GetRouter() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/", handlers.GetMetricsPage)
@@ -129,5 +129,5 @@ func GetRouter() chi.Router {
 		})
 	})
 
-	return r
+	return handlers.LogRequest(r)
 }
