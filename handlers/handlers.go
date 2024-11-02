@@ -72,17 +72,17 @@ func (sp *StorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
 	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
+	w.Header().Set("Content-Type", "application/json")
 	if err := dec.Decode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	metric, err := memStorage.GetMetric(metric)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -93,6 +93,7 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
 	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
+	w.Header().Set("Content-Type", "application/json")
 	if err := dec.Decode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -103,7 +104,6 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
