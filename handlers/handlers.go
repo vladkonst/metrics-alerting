@@ -70,7 +70,7 @@ func (sp *StorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
-	var metric *models.Metrics = new(models.Metrics)
+	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -91,7 +91,7 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 }
 
 func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
-	var metric *models.Metrics = new(models.Metrics)
+	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

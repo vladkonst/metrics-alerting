@@ -46,7 +46,7 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 		if _, ok := m.Counters[metric.ID]; !ok {
 			m.Counters[metric.ID] = metric
 		} else {
-			m.Counters[metric.ID].Delta = metric.Delta
+			m.Counters[metric.ID].Delta += metric.Delta
 		}
 		return m.Counters[metric.ID], nil
 	case "gauge":
