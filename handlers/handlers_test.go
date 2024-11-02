@@ -1,6 +1,8 @@
 package handlers_test
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,8 +13,14 @@ import (
 	"github.com/vladkonst/metrics-alerting/routers"
 )
 
-func testRequest(t *testing.T, ts *httptest.Server, method, path string) *http.Response {
-	req, err := http.NewRequest(method, ts.URL+path, nil)
+type want struct {
+	contentType string
+	statusCode  int
+	body        string
+}
+
+func testRequest(t *testing.T, ts *httptest.Server, method, path string, rBody io.Reader) *http.Response {
+	req, err := http.NewRequest(method, ts.URL+path, rBody)
 	require.NoError(t, err)
 
 	resp, err := ts.Client().Do(req)
@@ -22,60 +30,104 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) *http.R
 	return resp
 }
 
-// func TestUpdateAndGetCounterMetric(t *testing.T) {
-// 	ts := httptest.NewServer(routers.GetRouter())
-// 	defer ts.Close()
-
-// 	t.Run("update and get gauge test", func(t *testing.T) {
-// 		testRequest(t, ts, "POST", "/update/counter/Alloc/1")
-// 		res := testRequest(t, ts, "GET", "/value/counter/Alloc/")
-// 		var body []byte
-// 		res.Body.Read(body)
-// 		defer res.Body.Close()
-// 		assert.Equal(t, 200, res.StatusCode)
-// 		assert.Equal(t, "text/plain; charset=utf-8", res.Header.Get("Content-Type"))
-// 		assert.Equal(t, "1", string(body))
-// 	})
-// }
-
-// func TestUpdateAndGetGaugeMetric(t *testing.T) {
-// 	ts := httptest.NewServer(routers.GetRouter())
-// 	defer ts.Close()
-
-// 	t.Run("update and get gauge test", func(t *testing.T) {
-// 		testRequest(t, ts, "POST", "/update/gauge/Alloc/1.0")
-// 		res := testRequest(t, ts, "GET", "/value/gauge/Alloc/")
-// 		var body []byte
-// 		res.Body.Read(body)
-// 		defer res.Body.Close()
-// 		assert.Equal(t, 200, res.StatusCode)
-// 		assert.Equal(t, "text/plain; charset=utf-8", res.Header.Get("Content-Type"))
-// 		assert.Equal(t, "1.0", string(body))
-// 	})
-// }
-
-func TestGetCurrentMetricValue(t *testing.T) {
+func TestUpdateMetric(t *testing.T) {
 	ts := httptest.NewServer(routers.GetRouter())
 	defer ts.Close()
-
-	type want struct {
-		contentType string
-		statusCode  int
+	tests := []struct {
+		name    string
+		request string
+		want    want
+		body    string
+	}{
+		{
+			name: "without body test",
+			want: want{
+				contentType: "text/plain; charset=utf-8",
+				statusCode:  500,
+				body:        "",
+			},
+			request: "/update",
+			body:    "",
+		},
+		{
+			name: "unsupported type test",
+			want: want{
+				contentType: "text/plain; charset=utf-8",
+				statusCode:  422,
+				body:        "",
+			},
+			request: "/update",
+			body:    `{"ID": "test", "MType": "unsupported", "Delta": 0, "Value": 0.0}`,
+		},
+		{
+			name: "success test",
+			want: want{
+				contentType: "application/json",
+				statusCode:  200,
+				body:        `{"id": "test", "type": "gauge", "value": 1.1}`,
+			},
+			request: "/update",
+			body:    `{"id": "test", "type": "gauge", "delta": 0, "value": 1.1}`,
+		},
 	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buff := bytes.NewBufferString(test.body)
+			req, err := http.NewRequest("POST", ts.URL+test.request, buff)
+			require.NoError(t, err)
+			req.Header.Add("Content-Type", "application/json")
+			resp, err := ts.Client().Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, test.want.statusCode, resp.StatusCode)
+			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"))
+			if test.want.body != "" {
+				body := make([]byte, len(test.want.body))
+				n, _ := resp.Body.Read(body)
+				defer resp.Body.Close()
+				assert.JSONEq(t, test.want.body, string(body[:n]))
+			}
+		})
+	}
+}
+
+func TestGetGaugeMetricValue(t *testing.T) {
+	ts := httptest.NewServer(routers.GetRouter())
+	defer ts.Close()
 	tests := []struct {
 		name    string
 		request string
 		want    want
 	}{
 		{
-			name: "metric without name gauge test",
+			name: "metric without name test",
 			want: want{
 				contentType: "text/plain; charset=utf-8",
 				statusCode:  404,
 			},
 			request: "/value/gauge/",
 		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			res := testRequest(t, ts, "GET", test.request, nil)
+			defer res.Body.Close()
+			assert.Equal(t, test.want.statusCode, res.StatusCode)
+			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
+		})
+	}
+}
+
+func TestGetCounterMetricValue(t *testing.T) {
+	ts := httptest.NewServer(routers.GetRouter())
+	defer ts.Close()
+	tests := []struct {
+		name    string
+		request string
+		want    want
+	}{
 		{
 			name: "metric without name counter test",
 			want: want{
@@ -88,7 +140,7 @@ func TestGetCurrentMetricValue(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			res := testRequest(t, ts, "GET", test.request)
+			res := testRequest(t, ts, "GET", test.request, nil)
 			defer res.Body.Close()
 			assert.Equal(t, test.want.statusCode, res.StatusCode)
 			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
@@ -96,14 +148,9 @@ func TestGetCurrentMetricValue(t *testing.T) {
 	}
 }
 
-func TestUpdateMetric(t *testing.T) {
+func TestUpdateGaugeMetric(t *testing.T) {
 	ts := httptest.NewServer(routers.GetRouter())
 	defer ts.Close()
-	type want struct {
-		contentType string
-		statusCode  int
-	}
-
 	tests := []struct {
 		name    string
 		request string
@@ -140,8 +187,28 @@ func TestUpdateMetric(t *testing.T) {
 			},
 			request: "/update/gauge/Alloc/Alloc",
 		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			res := testRequest(t, ts, "POST", test.request, nil)
+			defer res.Body.Close()
+			assert.Equal(t, test.want.statusCode, res.StatusCode)
+			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))
+		})
+	}
+}
+
+func TestUpdateCounterMetric(t *testing.T) {
+	ts := httptest.NewServer(routers.GetRouter())
+	defer ts.Close()
+	tests := []struct {
+		name    string
+		request string
+		want    want
+	}{
 		{
-			name: "success counter test",
+			name: "success test",
 			want: want{
 				contentType: "text/plain; charset=utf-8",
 				statusCode:  200,
@@ -149,7 +216,7 @@ func TestUpdateMetric(t *testing.T) {
 			request: "/update/counter/Alloc/1",
 		},
 		{
-			name: "metric without value counter test",
+			name: "metric without value test",
 			want: want{
 				contentType: "text/plain; charset=utf-8",
 				statusCode:  404,
@@ -157,7 +224,7 @@ func TestUpdateMetric(t *testing.T) {
 			request: "/update/counter/Alloc/",
 		},
 		{
-			name: "metric without name counter test",
+			name: "metric without name test",
 			want: want{
 				contentType: "text/plain; charset=utf-8",
 				statusCode:  404,
@@ -165,7 +232,7 @@ func TestUpdateMetric(t *testing.T) {
 			request: "/update/counter/",
 		},
 		{
-			name: "incorrect metric value counter test",
+			name: "incorrect metric value test",
 			want: want{
 				contentType: "text/plain; charset=utf-8",
 				statusCode:  400,
@@ -176,7 +243,7 @@ func TestUpdateMetric(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			res := testRequest(t, ts, "POST", test.request)
+			res := testRequest(t, ts, "POST", test.request, nil)
 			defer res.Body.Close()
 			assert.Equal(t, test.want.statusCode, res.StatusCode)
 			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))

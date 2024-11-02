@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vladkonst/metrics-alerting/internal/logger"
-	"github.com/vladkonst/metrics-alerting/internal/storage"
+	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
 type loggingResponseWriter struct {
@@ -42,61 +43,94 @@ func LogRequest(next http.Handler) http.Handler {
 			Str("method", r.Method).
 			Str("URI", r.URL.RequestURI()).
 			Dur("duration", time.Since(start)).
-			Int("status", lw.size).
-			Int("size", lw.status).
+			Int("status", lw.status).
+			Int("size", lw.size).
 			Msg("incoming request")
 	})
 }
 
-type GaugeRepository interface {
-	AddGauge(name string, value float64) error
-	GetGauge(name string) (float64, error)
+type MetricRepository interface {
+	AddMetric(*models.Metrics) (*models.Metrics, error)
+	GetMetric(*models.Metrics) (*models.Metrics, error)
+	GetGaugesValues() (map[string]float64, error)
+	GetCountersValues() (map[string]int64, error)
 }
 
-type CounterRepository interface {
-	AddCounter(name string, value int64) error
-	GetCounter(name string) (int64, error)
+type StorageProvider struct {
+	handler func(http.ResponseWriter, *http.Request, MetricRepository)
+	storage MetricRepository
 }
 
-type GaugeStorageProvider struct {
-	handler    func(http.ResponseWriter, *http.Request, GaugeRepository)
-	memStorage GaugeRepository
+func NewStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, MetricRepository), memStorage MetricRepository) *StorageProvider {
+	return &StorageProvider{handlerToWrap, memStorage}
 }
 
-func NewGaugeStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, GaugeRepository)) *GaugeStorageProvider {
-	var memStorage GaugeRepository = storage.GetStorage()
-	return &GaugeStorageProvider{handlerToWrap, memStorage}
+func (sp *StorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sp.handler(w, r, sp.storage)
 }
 
-func (sp *GaugeStorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sp.handler(w, r, sp.memStorage)
+func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	var metric *models.Metrics = new(models.Metrics)
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	metric, err := memStorage.GetMetric(metric)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
-type CounterStorageProvider struct {
-	handler    func(http.ResponseWriter, *http.Request, CounterRepository)
-	memStorage CounterRepository
+func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	var metric *models.Metrics = new(models.Metrics)
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	metric, err := memStorage.AddMetric(metric)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
-func NewCounterStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, CounterRepository)) *CounterStorageProvider {
-	var memStorage CounterRepository = storage.GetStorage()
-	return &CounterStorageProvider{handlerToWrap, memStorage}
-}
+func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	gauges, err := memStorage.GetGaugesValues()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-func (sp *CounterStorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sp.handler(w, r, sp.memStorage)
-}
-
-func GetMetricsPage(w http.ResponseWriter, r *http.Request) {
-	memStorage := storage.GetStorage()
+	counters, err := memStorage.GetCountersValues()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	data := struct {
 		Gauges   map[string]float64
 		Counters map[string]int64
 	}{
-		Gauges:   memStorage.Gauges,
-		Counters: memStorage.Counters,
+		Gauges:   gauges,
+		Counters: counters,
 	}
-
 	tmpl := `
 	<!DOCTYPE html>
 	<head>
@@ -114,7 +148,6 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 		</ul>
 	</body>
 	</html>`
-
 	t, err := template.New("webpage").Parse(tmpl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -128,42 +161,59 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 }
 
-func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage GaugeRepository) {
-	gauge, err := memStorage.GetGauge(chi.URLParam(r, "name"))
+func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "gauge"}
+	gauge, err := memStorage.GetMetric(&metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	io.WriteString(w, fmt.Sprintf("%g", gauge))
+	io.WriteString(w, fmt.Sprintf("%g", gauge.Value))
 }
 
-func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage CounterRepository) {
-	counter, err := memStorage.GetCounter(chi.URLParam(r, "name"))
+func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "counter"}
+	counter, err := memStorage.GetMetric(&metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	io.WriteString(w, fmt.Sprintf("%d", counter))
+	io.WriteString(w, fmt.Sprintf("%d", counter.Delta))
 }
 
-func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage GaugeRepository) {
+func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
 	v, err := strconv.ParseFloat(chi.URLParam(r, "value"), 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
 		return
 	}
-	memStorage.AddGauge(chi.URLParam(r, "name"), v)
+
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), Value: v, MType: "gauge"}
+	_, err = memStorage.AddMetric(&metric)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 }
 
-func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage CounterRepository) {
+func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
 	v, err := strconv.ParseInt(chi.URLParam(r, "value"), 10, 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
 		return
 	}
-	memStorage.AddCounter(chi.URLParam(r, "name"), v)
+
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), Delta: v, MType: "counter"}
+	_, err = memStorage.AddMetric(&metric)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 }

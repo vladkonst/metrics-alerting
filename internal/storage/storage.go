@@ -2,54 +2,76 @@ package storage
 
 import (
 	"errors"
+
+	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
 type MemStorage struct {
-	Gauges   map[string]float64
-	Counters map[string]int64
+	Gauges   map[string]*models.Metrics
+	Counters map[string]*models.Metrics
 }
 
 var storage MemStorage
 
+func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
+	countersValues := make(map[string]int64, len(m.Counters))
+
+	for k, v := range m.Counters {
+		countersValues[k] = v.Delta
+	}
+
+	return countersValues, nil
+}
+
+func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
+	gaugesValues := make(map[string]float64, len(m.Gauges))
+
+	for k, v := range m.Gauges {
+		gaugesValues[k] = v.Value
+	}
+
+	return gaugesValues, nil
+}
+
 func GetStorage() *MemStorage {
 	if storage.Gauges == nil {
-		storage = MemStorage{Gauges: make(map[string]float64), Counters: make(map[string]int64)}
+		storage = MemStorage{Gauges: make(map[string]*models.Metrics), Counters: make(map[string]*models.Metrics)}
 	}
 	return &storage
 }
 
-func (m *MemStorage) AddCounter(name string, value int64) error {
-	m.Counters[name] += value
-	return nil
-}
-
-func (m *MemStorage) GetCounter(name string) (int64, error) {
-	if counter, ok := m.Counters[name]; !ok {
-		return 0, errors.New("can't find metric by provided name")
-	} else {
-		return counter, nil
+func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) {
+	switch metric.MType {
+	case "counter":
+		if _, ok := m.Counters[metric.ID]; !ok {
+			m.Counters[metric.ID] = metric
+		} else {
+			m.Counters[metric.ID].Delta = metric.Delta
+		}
+		return m.Counters[metric.ID], nil
+	case "gauge":
+		m.Gauges[metric.ID] = metric
+		return m.Gauges[metric.ID], nil
+	default:
+		return nil, errors.New("provided metric type is incorrect")
 	}
 }
 
-func (m *MemStorage) RemoveCounter(name string) error {
-	delete(m.Counters, name)
-	return nil
-}
-
-func (m *MemStorage) AddGauge(name string, value float64) error {
-	m.Gauges[name] = value
-	return nil
-}
-
-func (m *MemStorage) GetGauge(name string) (float64, error) {
-	if gauge, ok := m.Gauges[name]; !ok {
-		return 0.0, errors.New("can't find metric by provided name")
-	} else {
-		return gauge, nil
+func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) {
+	switch metric.MType {
+	case "counter":
+		if counter, ok := m.Counters[metric.ID]; !ok {
+			return nil, errors.New("can't find metric by provided name")
+		} else {
+			return counter, nil
+		}
+	case "gauge":
+		if gauge, ok := m.Gauges[metric.ID]; !ok {
+			return nil, errors.New("can't find metric by provided name")
+		} else {
+			return gauge, nil
+		}
+	default:
+		return nil, errors.New("provided metric type is incorrect")
 	}
-}
-
-func (m *MemStorage) RemoveGauge(name string) error {
-	delete(m.Gauges, name)
-	return nil
 }

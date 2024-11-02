@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vladkonst/metrics-alerting/internal/agent"
 	"github.com/vladkonst/metrics-alerting/internal/configs"
-	"github.com/vladkonst/metrics-alerting/internal/metrics"
 )
 
-func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
+func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
 	for k, v := range m.Gauges {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/gauge/%v/%v", serverAddr.String(), k, v), "text/plain", nil)
+		resp, err := http.Post(fmt.Sprintf("http://%s/update/gauge/%v/%v", serverAddr.String(), k, v.Value), "text/plain", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -25,9 +25,9 @@ func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
 	}
 }
 
-func sendCounterMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
+func sendCounterMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
 	for k, v := range m.Counters {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/counter/%v/%v", serverAddr.String(), k, v), "text/plain", nil)
+		resp, err := http.Post(fmt.Sprintf("http://%s/update/counter/%v/%v", serverAddr.String(), k, v.Delta), "text/plain", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -41,20 +41,21 @@ func sendCounterMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
 
 func main() {
 	cfg := configs.GetClientConfig()
-	metrics := metrics.Metrics{Gauges: make(map[string]float64), Counters: make(map[string]int)}
+	metricsStorage := agent.NewMetricsStorage()
+	metricsStorage.InitMetrics()
 	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
 	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
 
 	for {
 		select {
 		case <-pollTicker.C:
-			metrics.UpdateGaugeMetrics()
+			metricsStorage.UpdateMetrics()
 		default:
 		}
 		select {
 		case <-reprotTicker.C:
-			sendGaugeMetrics(cfg.NetAddressCfg, &metrics)
-			sendCounterMetrics(cfg.NetAddressCfg, &metrics)
+			sendGaugeMetrics(cfg.NetAddressCfg, &metricsStorage)
+			sendCounterMetrics(cfg.NetAddressCfg, &metricsStorage)
 		default:
 		}
 	}
