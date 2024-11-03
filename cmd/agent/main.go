@@ -33,10 +33,16 @@ func sendRequest(v interface{}, serverAddr *configs.NetAddressCfg) {
 
 func sendMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
 	for _, v := range m.Gauges {
+		if v == nil {
+			continue
+		}
 		sendRequest(v, serverAddr)
 	}
 
 	for _, v := range m.Counters {
+		if v == nil {
+			continue
+		}
 		sendRequest(v, serverAddr)
 	}
 }
