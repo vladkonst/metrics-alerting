@@ -77,15 +77,16 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	metric, err := memStorage.GetMetric(metric)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
+	metric, errGetMetric := memStorage.GetMetric(metric)
 
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if errGetMetric != nil {
+		http.Error(w, errGetMetric.Error(), http.StatusNotFound)
 		return
 	}
 }
