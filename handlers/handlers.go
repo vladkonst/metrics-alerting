@@ -79,7 +79,7 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 	}
 	metric, err := memStorage.GetMetric(metric)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 

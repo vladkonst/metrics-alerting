@@ -60,17 +60,17 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
-		if counter, ok := m.Counters[metric.ID]; !ok {
-			return nil, errors.New("can't find metric by provided name")
-		} else {
-			return counter, nil
+		counter, ok := m.Counters[metric.ID]
+		if !ok {
+			return metric, nil
 		}
+		return counter, nil
 	case "gauge":
-		if gauge, ok := m.Gauges[metric.ID]; !ok {
-			return nil, errors.New("can't find metric by provided name")
-		} else {
-			return gauge, nil
+		gauge, ok := m.Gauges[metric.ID]
+		if !ok {
+			return metric, nil
 		}
+		return gauge, nil
 	default:
 		return nil, errors.New("provided metric type is incorrect")
 	}
