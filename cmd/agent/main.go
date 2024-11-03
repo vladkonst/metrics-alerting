@@ -16,13 +16,13 @@ import (
 func sendRequest(v interface{}, serverAddr *configs.NetAddressCfg) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	buff := bytes.NewBuffer(b)
 	resp, err := http.Post(fmt.Sprintf("http://%s/update/", serverAddr.String()), "encoding/json", buff)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 	resBody, _ := io.ReadAll(resp.Body)
 	log.Println(string(resBody))

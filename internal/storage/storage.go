@@ -61,13 +61,13 @@ func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) 
 	switch metric.MType {
 	case "counter":
 		if counter, ok := m.Counters[metric.ID]; !ok {
-			return metric, errors.New("can't find metric by provided name")
+			return nil, errors.New("can't find metric by provided name")
 		} else {
 			return counter, nil
 		}
 	case "gauge":
 		if gauge, ok := m.Gauges[metric.ID]; !ok {
-			return metric, errors.New("can't find metric by provided name")
+			return nil, errors.New("can't find metric by provided name")
 		} else {
 			return gauge, nil
 		}
