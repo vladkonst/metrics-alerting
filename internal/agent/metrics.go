@@ -53,7 +53,7 @@ func (m *MetricsStorage) UpdateMetrics() {
 	m.Gauges["Sys"].Value = float64(memStats.Sys)
 	m.Gauges["TotalAlloc"].Value = float64(memStats.TotalAlloc)
 	m.Gauges["RandomValue"].Value = 1.0 + rand.Float64()*9
-	m.Counters["PollCount"].Delta++
+	m.Counters["PollCount"].Delta += 1
 	m.mu.Unlock()
 }
 

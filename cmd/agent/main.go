@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,8 +14,14 @@ import (
 )
 
 func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
-	for k, v := range m.Gauges {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/gauge/%v/%v", serverAddr.String(), k, v.Value), "text/plain", nil)
+	for _, v := range m.Gauges {
+		b, err := json.Marshal(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		buff := bytes.NewBuffer(b)
+		resp, err := http.Post(fmt.Sprintf("http://%s/update", serverAddr.String()), "encoding/json", buff)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -26,8 +34,15 @@ func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage
 }
 
 func sendCounterMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
-	for k, v := range m.Counters {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/counter/%v/%v", serverAddr.String(), k, v.Delta), "text/plain", nil)
+	for _, v := range m.Counters {
+		b, err := json.Marshal(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		buff := bytes.NewBuffer(b)
+
+		resp, err := http.Post(fmt.Sprintf("http://%s/update", serverAddr.String()), "encoding/json", buff)
 		if err != nil {
 			log.Fatal(err)
 		}
