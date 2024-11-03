@@ -17,7 +17,7 @@ func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
 	countersValues := make(map[string]int64, len(m.Counters))
 
 	for k, v := range m.Counters {
-		countersValues[k] = v.Delta
+		countersValues[k] = *v.Delta
 	}
 
 	return countersValues, nil
@@ -27,7 +27,7 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	gaugesValues := make(map[string]float64, len(m.Gauges))
 
 	for k, v := range m.Gauges {
-		gaugesValues[k] = v.Value
+		gaugesValues[k] = *v.Value
 	}
 
 	return gaugesValues, nil
@@ -46,7 +46,7 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 		if _, ok := m.Counters[metric.ID]; !ok {
 			m.Counters[metric.ID] = metric
 		} else {
-			m.Counters[metric.ID].Delta += metric.Delta
+			*(m.Counters[metric.ID].Delta) += *metric.Delta
 		}
 		return m.Counters[metric.ID], nil
 	case "gauge":

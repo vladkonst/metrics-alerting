@@ -170,7 +170,7 @@ func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage Metr
 	}
 
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	io.WriteString(w, fmt.Sprintf("%g", gauge.Value))
+	io.WriteString(w, fmt.Sprintf("%g", *gauge.Value))
 }
 
 func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
@@ -182,7 +182,7 @@ func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage Me
 	}
 
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	io.WriteString(w, fmt.Sprintf("%d", counter.Delta))
+	io.WriteString(w, fmt.Sprintf("%d", *counter.Delta))
 }
 
 func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
@@ -192,7 +192,7 @@ func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage Metric
 		return
 	}
 
-	metric := models.Metrics{ID: chi.URLParam(r, "name"), Value: v, MType: "gauge"}
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), Value: &v, MType: "gauge"}
 	_, err = memStorage.AddMetric(&metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -208,7 +208,7 @@ func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage Metr
 		return
 	}
 
-	metric := models.Metrics{ID: chi.URLParam(r, "name"), Delta: v, MType: "counter"}
+	metric := models.Metrics{ID: chi.URLParam(r, "name"), Delta: &v, MType: "counter"}
 	_, err = memStorage.AddMetric(&metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
