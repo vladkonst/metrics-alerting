@@ -17,12 +17,14 @@ func sendRequest(v interface{}, serverAddr *configs.NetAddressCfg) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	buff := bytes.NewBuffer(b)
 	resp, err := http.Post(fmt.Sprintf("http://%s/update/", serverAddr.String()), "encoding/json", buff)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	resBody, _ := io.ReadAll(resp.Body)
 	log.Println(string(resBody))
@@ -33,16 +35,10 @@ func sendRequest(v interface{}, serverAddr *configs.NetAddressCfg) {
 
 func sendMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
 	for _, v := range m.Gauges {
-		if v == nil {
-			continue
-		}
 		sendRequest(v, serverAddr)
 	}
 
 	for _, v := range m.Counters {
-		if v == nil {
-			continue
-		}
 		sendRequest(v, serverAddr)
 	}
 }
