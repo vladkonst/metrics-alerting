@@ -67,7 +67,7 @@ func TestUpdateMetric(t *testing.T) {
 				body:        `{"id": "test", "type": "gauge", "value": 1.1}`,
 			},
 			request: "/update",
-			body:    `{"id": "test", "type": "gauge", "delta": 0, "value": 1.1}`,
+			body:    `{"id": "test", "type": "gauge", "value": 1.1}`,
 		},
 	}
 
@@ -83,7 +83,7 @@ func TestUpdateMetric(t *testing.T) {
 			assert.Equal(t, test.want.statusCode, resp.StatusCode)
 			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"))
 			if test.want.body != "" {
-				body := make([]byte, len(test.want.body))
+				body := make([]byte, 1024)
 				n, _ := resp.Body.Read(body)
 				defer resp.Body.Close()
 				assert.JSONEq(t, test.want.body, string(body[:n]))
