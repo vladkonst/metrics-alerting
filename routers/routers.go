@@ -129,5 +129,5 @@ func GetRouter() http.Handler {
 		})
 	})
 
-	return handlers.LogRequest(r)
+	return handlers.LogRequest(handlers.GzipMiddleware(r))
 }

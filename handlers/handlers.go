@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +15,37 @@ import (
 	"github.com/vladkonst/metrics-alerting/internal/logger"
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
+
+func GzipMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ow := w
+		switch r.Header.Get("Content-Type") {
+		case "application/json", "text/html":
+			acceptEncoding := r.Header.Get("Accept-Encoding")
+			supportsGzip := strings.Contains(acceptEncoding, "gzip")
+			if supportsGzip {
+				cw := newCompressWriter(w)
+				ow = cw
+				defer cw.Close()
+			}
+
+			contentEncoding := r.Header.Get("Content-Encoding")
+			sendsGzip := strings.Contains(contentEncoding, "gzip")
+			if sendsGzip {
+				cr, err := newCompressReader(r.Body)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				r.Body = cr
+				defer cr.Close()
+			}
+		default:
+		}
+		h.ServeHTTP(ow, r)
+	})
+}
 
 type loggingResponseWriter struct {
 	http.ResponseWriter

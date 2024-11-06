@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,52 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string, rBody i
 	defer resp.Body.Close()
 
 	return resp
+}
+
+func TestGzipCompression(t *testing.T) {
+	ts := httptest.NewServer(routers.GetRouter())
+	defer ts.Close()
+	tests := []struct {
+		name    string
+		request string
+		want    want
+		body    string
+	}{
+		{
+			name: "compress test",
+			want: want{
+				statusCode: 200,
+				body:       `{"id": "test", "type": "gauge", "value": 1.1}`,
+			},
+			request: "/update",
+			body:    `{"id": "test", "type": "gauge", "value": 1.1}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buff := bytes.NewBuffer(nil)
+			zb := gzip.NewWriter(buff)
+			_, err := zb.Write([]byte(test.body))
+			require.NoError(t, err)
+			err = zb.Close()
+			require.NoError(t, err)
+			req, err := http.NewRequest("POST", ts.URL+test.request, buff)
+			require.NoError(t, err)
+			req.Header.Set("Content-Encoding", "gzip")
+			req.Header.Set("Accept-Encoding", "gzip")
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := ts.Client().Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, test.want.statusCode, resp.StatusCode)
+			zr, err := gzip.NewReader(resp.Body)
+			require.NoError(t, err)
+			b, err := io.ReadAll(zr)
+			require.NoError(t, err)
+			assert.JSONEq(t, test.want.body, string(b))
+		})
+	}
 }
 
 func TestUpdateMetric(t *testing.T) {
@@ -77,6 +124,7 @@ func TestUpdateMetric(t *testing.T) {
 			req, err := http.NewRequest("POST", ts.URL+test.request, buff)
 			require.NoError(t, err)
 			req.Header.Add("Content-Type", "application/json")
+			req.Header.Set("Accept-Encoding", "")
 			resp, err := ts.Client().Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
