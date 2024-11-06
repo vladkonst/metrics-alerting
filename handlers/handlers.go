@@ -170,6 +170,7 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 }
 
 func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	gauges, err := memStorage.GetGaugesValues()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -215,8 +216,6 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRep
 	if err := t.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	w.Header().Add("Content-Type", "text/html")
 }
 
 func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
