@@ -22,7 +22,8 @@ func GzipMiddleware(h http.Handler) http.Handler {
 		switch r.Header.Get("Content-Type") {
 		case "application/json", "text/html":
 			acceptEncoding := r.Header.Get("Accept-Encoding")
-			supportsGzip := strings.Contains(acceptEncoding, "gzip")
+			// supportsGzip := strings.Contains(acceptEncoding, "gzip")
+			supportsGzip := acceptEncoding == "gzip"
 			if supportsGzip {
 				cw := newCompressWriter(w)
 				ow = cw
