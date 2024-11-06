@@ -216,7 +216,7 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRep
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	w.Header().Add("Content-Type", "text/html; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html")
 }
 
 func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
