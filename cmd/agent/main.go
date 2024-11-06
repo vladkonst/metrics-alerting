@@ -24,8 +24,7 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 
 	buff := bytes.NewBuffer(nil)
 	zb := gzip.NewWriter(buff)
-	n, err := zb.Write(b)
-	log.Println(n)
+	_, err = zb.Write(b)
 	if err != nil {
 		log.Println(err)
 		return
@@ -44,7 +43,7 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 	}
 
 	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "")
+	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -53,9 +52,9 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 	}
 
 	resBody, _ := io.ReadAll(resp.Body)
-	log.Println(string(resBody))
-	log.Println(resp.StatusCode)
-	log.Println(resp.Header.Get("Content-Type"))
+	log.Println("Body: ", string(resBody))
+	log.Println("Status: ", resp.StatusCode)
+	log.Println("Content-Type: ", resp.Header.Get("Content-Type"))
 	resp.Body.Close()
 }
 
