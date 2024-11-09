@@ -24,6 +24,7 @@ func main() {
 
 	cfg := configs.GetServerConfig()
 	metricsCh := make(chan models.Metrics)
+	storage.GetStorage(&metricsCh)
 	fileStorage, err := storage.NewFileManager(cfg.IntervalsCfg.FileStoragePath, cfg.IntervalsCfg.Restore, cfg.IntervalsCfg.StoreInterval, &metricsCh)
 	if err != nil {
 		log.Panic(err)
