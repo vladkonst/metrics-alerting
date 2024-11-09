@@ -2,9 +2,12 @@ package storage
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
+
+var once sync.Once
 
 type MemStorage struct {
 	gauges    map[string]*models.Metrics
@@ -39,9 +42,11 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 }
 
 func GetStorage(metricsCh *chan models.Metrics) *MemStorage {
-	if storage.gauges == nil {
-		storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
-	}
+	once.Do(
+		func() {
+			storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
+
+		})
 	return &storage
 }
 
