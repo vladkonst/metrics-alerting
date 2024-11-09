@@ -38,7 +38,7 @@ func (fm *FileManager) InitMetrics() error {
 		return err
 	}
 
-	ms := GetStorage(nil)
+	ms := GetStorage()
 	for _, metric := range fm.Metrics {
 		_, err = ms.AddMetric(&metric)
 		if err != nil {

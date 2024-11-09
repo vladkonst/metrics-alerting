@@ -41,10 +41,11 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	return gaugesValues, nil
 }
 
-func GetStorage(metricsCh *chan models.Metrics) *MemStorage {
+func GetStorage() *MemStorage {
 	once.Do(
 		func() {
-			storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
+			metricsCh := make(chan models.Metrics)
+			storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: &metricsCh}
 
 		})
 	return &storage

@@ -9,10 +9,8 @@ import (
 	"github.com/vladkonst/metrics-alerting/internal/storage"
 )
 
-func GetRouter() http.Handler {
+func GetRouter(memStorage *storage.MemStorage) http.Handler {
 	r := chi.NewRouter()
-	memStorage := storage.GetStorage(nil)
-
 	r.Get("/", handlers.NewStorageProvider(handlers.GetMetricsPage, memStorage))
 
 	r.Route("/value", func(r chi.Router) {
