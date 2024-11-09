@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bufio"
 	"encoding/json"
 	"os"
 	"time"
@@ -28,19 +27,14 @@ func NewFileManager(f string, r bool, s int, c *chan models.Metrics) (*FileManag
 }
 
 func (fm *FileManager) InitMetrics() error {
-	file, err := os.Open(fm.filePath)
+	file, err := os.OpenFile(fm.filePath, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
 
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() {
-		return scanner.Err()
-	}
-
-	data := scanner.Bytes()
-	if err = json.Unmarshal(data, &fm.Metrics); err != nil {
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&fm.Metrics); err != nil && err.Error() != "EOF" {
 		return err
 	}
 
@@ -51,29 +45,38 @@ func (fm *FileManager) InitMetrics() error {
 			return err
 		}
 	}
-	return nil
-}
 
-func (fm *FileManager) LoadMetricsSync() error {
-	for metric := range *fm.metricsCh {
-		fm.Metrics[metric.ID] = metric
-		file, err := os.Create(fm.filePath)
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-		enc := json.NewEncoder(file)
-		if err := enc.Encode(fm.Metrics); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 func (fm *FileManager) LoadMetrics() error {
+	file, err := os.OpenFile(fm.filePath, os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+	enc := json.NewEncoder(file)
+	if err := enc.Encode(fm.Metrics); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fm *FileManager) ProcessMetricsSync() error {
+	for metric := range *fm.metricsCh {
+		fm.Metrics[metric.ID] = metric
+		if err := fm.LoadMetrics(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (fm *FileManager) ProcessMetrics() error {
 	if fm.storeInterval == 0 {
-		go fm.LoadMetricsSync()
+		go fm.ProcessMetricsSync()
 		return nil
 	}
 
@@ -81,17 +84,9 @@ func (fm *FileManager) LoadMetrics() error {
 	for {
 		select {
 		case <-tc.C:
-			file, err := os.Create(fm.filePath)
-			if err != nil {
+			if err := fm.LoadMetrics(); err != nil {
 				return err
 			}
-
-			defer file.Close()
-			enc := json.NewEncoder(file)
-			if err := enc.Encode(fm.Metrics); err != nil {
-				return err
-			}
-
 		case metric := <-*fm.metricsCh:
 			fm.Metrics[metric.ID] = metric
 		}

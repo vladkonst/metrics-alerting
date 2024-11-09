@@ -38,7 +38,7 @@ func GetClientConfig() *ClientCfg {
 
 func GetServerConfig() *ServerCfg {
 	addr := &NetAddressCfg{Host: "localhost", Port: 8080}
-	intervalCfg := &ServerIntervalsCfg{StoreInterval: 0, FileStoragePath: "metrics.txt", Restore: true}
+	intervalCfg := &ServerIntervalsCfg{StoreInterval: 300, FileStoragePath: "metrics.txt", Restore: true}
 	flag.Var(addr, "a", "Server net address host:port")
 	flag.IntVar(&intervalCfg.StoreInterval, "i", intervalCfg.StoreInterval, "store interval to load metrics to the file")
 	flag.StringVar(&intervalCfg.FileStoragePath, "f", intervalCfg.FileStoragePath, "file with stored metrics")
