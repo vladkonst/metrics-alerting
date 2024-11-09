@@ -55,6 +55,7 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 	log.Println("Body: ", string(resBody))
 	log.Println("Status: ", resp.StatusCode)
 	log.Println("Content-Type: ", resp.Header.Get("Content-Type"))
+	log.Println("Content-Encoding: ", resp.Header.Values("Content-Encoding"))
 	resp.Body.Close()
 }
 

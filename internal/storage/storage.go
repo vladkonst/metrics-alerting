@@ -7,35 +7,40 @@ import (
 )
 
 type MemStorage struct {
-	Gauges   map[string]*models.Metrics
-	Counters map[string]*models.Metrics
+	gauges    map[string]*models.Metrics
+	counters  map[string]*models.Metrics
+	metricsCh *chan models.Metrics
 }
 
 var storage MemStorage
 
 func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
-	countersValues := make(map[string]int64, len(m.Counters))
+	countersValues := make(map[string]int64, len(m.counters))
 
-	for k, v := range m.Counters {
+	for k, v := range m.counters {
 		countersValues[k] = *v.Delta
 	}
 
 	return countersValues, nil
 }
 
-func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
-	gaugesValues := make(map[string]float64, len(m.Gauges))
+func (m *MemStorage) GetMetricsChanel() *chan models.Metrics {
+	return m.metricsCh
+}
 
-	for k, v := range m.Gauges {
+func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
+	gaugesValues := make(map[string]float64, len(m.gauges))
+
+	for k, v := range m.gauges {
 		gaugesValues[k] = *v.Value
 	}
 
 	return gaugesValues, nil
 }
 
-func GetStorage() *MemStorage {
-	if storage.Gauges == nil {
-		storage = MemStorage{Gauges: make(map[string]*models.Metrics), Counters: make(map[string]*models.Metrics)}
+func GetStorage(metricsCh *chan models.Metrics) *MemStorage {
+	if storage.gauges == nil {
+		storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
 	}
 	return &storage
 }
@@ -43,15 +48,15 @@ func GetStorage() *MemStorage {
 func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
-		if _, ok := m.Counters[metric.ID]; !ok {
-			m.Counters[metric.ID] = metric
+		if _, ok := m.counters[metric.ID]; !ok {
+			m.counters[metric.ID] = metric
 		} else {
-			*(m.Counters[metric.ID].Delta) += *metric.Delta
+			*(m.counters[metric.ID].Delta) += *metric.Delta
 		}
-		return m.Counters[metric.ID], nil
+		return m.counters[metric.ID], nil
 	case "gauge":
-		m.Gauges[metric.ID] = metric
-		return m.Gauges[metric.ID], nil
+		m.gauges[metric.ID] = metric
+		return m.gauges[metric.ID], nil
 	default:
 		return nil, errors.New("provided metric type is incorrect")
 	}
@@ -60,13 +65,13 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
-		if counter, ok := m.Counters[metric.ID]; !ok {
+		if counter, ok := m.counters[metric.ID]; !ok {
 			return nil, errors.New("can't find metric by provided name")
 		} else {
 			return counter, nil
 		}
 	case "gauge":
-		if gauge, ok := m.Gauges[metric.ID]; !ok {
+		if gauge, ok := m.gauges[metric.ID]; !ok {
 			return nil, errors.New("can't find metric by provided name")
 		} else {
 			return gauge, nil

@@ -11,9 +11,9 @@ import (
 
 func GetRouter() http.Handler {
 	r := chi.NewRouter()
-	memStorage := storage.GetStorage()
+	memStorage := storage.GetStorage(nil)
 
-	r.Get("/", handlers.NewStorageProvider(handlers.GetMetricsPage, memStorage).ServeHTTP)
+	r.Get("/", handlers.NewStorageProvider(handlers.GetMetricsPage, memStorage))
 
 	r.Route("/value", func(r chi.Router) {
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +21,7 @@ func GetRouter() http.Handler {
 				http.Error(w, "Bad request.", http.StatusBadRequest)
 			}
 		})
-		r.Post("/", handlers.NewStorageProvider(handlers.GetMetric, memStorage).ServeHTTP)
+		r.Post("/", handlers.NewStorageProvider(handlers.GetMetric, memStorage))
 		r.Put("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		})
@@ -41,7 +41,7 @@ func GetRouter() http.Handler {
 			r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 			})
-			r.Get("/{name}", handlers.NewStorageProvider(handlers.GetGaugeMetricValue, memStorage).ServeHTTP)
+			r.Get("/{name}", handlers.NewStorageProvider(handlers.GetGaugeMetricValue, memStorage))
 		})
 		r.Route("/counter", func(r chi.Router) {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func GetRouter() http.Handler {
 			r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 			})
-			r.Get("/{name}", handlers.NewStorageProvider(handlers.GetCounterMetricValue, memStorage).ServeHTTP)
+			r.Get("/{name}", handlers.NewStorageProvider(handlers.GetCounterMetricValue, memStorage))
 		})
 		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid metric type", http.StatusBadRequest)
@@ -64,7 +64,7 @@ func GetRouter() http.Handler {
 	})
 
 	r.Route("/update", func(r chi.Router) {
-		r.Post("/", handlers.NewStorageProvider(handlers.UpdateMetric, memStorage).ServeHTTP)
+		r.Post("/", handlers.NewStorageProvider(handlers.UpdateMetric, memStorage))
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 		})
@@ -87,7 +87,7 @@ func GetRouter() http.Handler {
 			})
 			r.Route("/{name}", func(r chi.Router) {
 				r.Post("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "Metric not found.", http.StatusNotFound) })
-				r.Post("/{value}", handlers.NewStorageProvider(handlers.UpdateGaugeMetric, memStorage).ServeHTTP)
+				r.Post("/{value}", handlers.NewStorageProvider(handlers.UpdateGaugeMetric, memStorage))
 				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 				})
@@ -112,7 +112,7 @@ func GetRouter() http.Handler {
 			})
 			r.Route("/{name}", func(r chi.Router) {
 				r.Post("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "Metric not found.", http.StatusNotFound) })
-				r.Post("/{value}", handlers.NewStorageProvider(handlers.UpdateCounterMetric, memStorage).ServeHTTP)
+				r.Post("/{value}", handlers.NewStorageProvider(handlers.UpdateCounterMetric, memStorage))
 				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 				})
@@ -129,5 +129,5 @@ func GetRouter() http.Handler {
 		})
 	})
 
-	return handlers.LogRequest(handlers.GzipMiddleware(r))
+	return handlers.GzipMiddleware(handlers.LogRequest(r))
 }

@@ -19,8 +19,7 @@ import (
 func GzipMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ow := w
-		switch r.Header.Get("Content-Type") {
-		case "application/json", "text/html":
+		if strings.Contains(r.Header.Get("Content-Type"), "application/json") || strings.Contains(r.Header.Get("Accept"), "text/html") {
 			acceptEncoding := r.Header.Get("Accept-Encoding")
 			supportsGzip := strings.Contains(acceptEncoding, "gzip")
 			if supportsGzip {
@@ -42,59 +41,37 @@ func GzipMiddleware(h http.Handler) http.Handler {
 				r.Body = cr
 				defer cr.Close()
 			}
-		default:
-		}
-		switch r.Header.Get("Accept") {
-		case "application/json", "text/html":
-			acceptEncoding := r.Header.Get("Accept-Encoding")
-			supportsGzip := strings.Contains(acceptEncoding, "gzip")
-			if supportsGzip {
-				cw := newCompressWriter(w)
-				ow = cw
-				defer cw.Close()
-				cw.Header().Add("Content-Encoding", "gzip")
-			}
-
-			contentEncoding := r.Header.Get("Content-Encoding")
-			sendsGzip := strings.Contains(contentEncoding, "gzip")
-			if sendsGzip {
-				cr, err := newCompressReader(r.Body)
-				if err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-
-				r.Body = cr
-				defer cr.Close()
-			}
-		default:
 		}
 		h.ServeHTTP(ow, r)
 	})
 }
 
 type loggingResponseWriter struct {
-	http.ResponseWriter
+	r      http.ResponseWriter
 	status int
 	size   int
 }
 
-func (r *loggingResponseWriter) Write(b []byte) (int, error) {
-	size, err := r.ResponseWriter.Write(b)
-	r.size += size
+func (lr *loggingResponseWriter) Write(b []byte) (int, error) {
+	size, err := lr.r.Write(b)
+	lr.size += size
 	return size, err
 }
 
-func (r *loggingResponseWriter) WriteHeader(statusCode int) {
-	r.ResponseWriter.WriteHeader(statusCode)
-	r.status = statusCode
+func (lr *loggingResponseWriter) WriteHeader(statusCode int) {
+	lr.r.WriteHeader(statusCode)
+	lr.status = statusCode
+}
+
+func (lr *loggingResponseWriter) Header() http.Header {
+	return lr.r.Header()
 }
 
 func LogRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		logger := logger.Get()
-		lw := loggingResponseWriter{ResponseWriter: w}
+		lw := loggingResponseWriter{r: w}
 		next.ServeHTTP(&lw, r)
 		logger.
 			Info().
@@ -112,6 +89,7 @@ type MetricRepository interface {
 	GetMetric(*models.Metrics) (*models.Metrics, error)
 	GetGaugesValues() (map[string]float64, error)
 	GetCountersValues() (map[string]int64, error)
+	GetMetricsChanel() *chan models.Metrics
 }
 
 type StorageProvider struct {
@@ -119,12 +97,9 @@ type StorageProvider struct {
 	storage MetricRepository
 }
 
-func NewStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, MetricRepository), memStorage MetricRepository) *StorageProvider {
-	return &StorageProvider{handlerToWrap, memStorage}
-}
-
-func (sp *StorageProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sp.handler(w, r, sp.storage)
+func NewStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, MetricRepository), memStorage MetricRepository) http.HandlerFunc {
+	sp := &StorageProvider{handlerToWrap, memStorage}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sp.handler(w, r, sp.storage) })
 }
 
 func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
@@ -149,6 +124,7 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 }
 
 func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	metricsCh := memStorage.GetMetricsChanel()
 	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
 	w.Header().Set("Content-Type", "application/json")
@@ -156,6 +132,7 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	metric, err := memStorage.AddMetric(metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -167,6 +144,8 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	*metricsCh <- *metric
 }
 
 func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
@@ -243,6 +222,7 @@ func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage Me
 }
 
 func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	metricsCh := memStorage.GetMetricsChanel()
 	v, err := strconv.ParseFloat(chi.URLParam(r, "value"), 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
@@ -256,9 +236,11 @@ func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage Metric
 		return
 	}
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	*metricsCh <- metric
 }
 
 func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+	metricsCh := memStorage.GetMetricsChanel()
 	v, err := strconv.ParseInt(chi.URLParam(r, "value"), 10, 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
@@ -273,4 +255,5 @@ func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage Metr
 	}
 
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	*metricsCh <- metric
 }
