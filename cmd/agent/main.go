@@ -8,6 +8,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/vladkonst/metrics-alerting/internal/agent"
@@ -59,33 +62,45 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 	resp.Body.Close()
 }
 
-func sendMetrics(serverAddr *configs.NetAddressCfg, m *agent.MetricsStorage) {
-	for _, v := range m.Gauges {
-		sendRequest(v, serverAddr)
-	}
-
-	for _, v := range m.Counters {
-		sendRequest(v, serverAddr)
+func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
+	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
+	metrics := make(map[string]models.Metrics)
+	for {
+		select {
+		case <-reprotTicker.C:
+			for _, metric := range metrics {
+				sendRequest(&metric, cfg.NetAddressCfg)
+			}
+		case metric := <-*metricsCh:
+			metrics[metric.ID] = metric
+		}
 	}
 }
 
 func main() {
+	done := make(chan bool)
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		<-c
+		done <- true
+	}()
 	cfg := configs.GetClientConfig()
 	metricsStorage := agent.NewMetricsStorage()
 	metricsStorage.InitMetrics()
-	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
 	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+	metricsCh := make(chan models.Metrics)
+
+	go func() {
+		sendMetrics(cfg, &metricsCh)
+	}()
 
 	for {
 		select {
 		case <-pollTicker.C:
-			metricsStorage.UpdateMetrics()
-		default:
-		}
-		select {
-		case <-reprotTicker.C:
-			sendMetrics(cfg.NetAddressCfg, &metricsStorage)
-		default:
+			metricsStorage.UpdateMetrics(&metricsCh)
+		case <-done:
+			return
 		}
 	}
 }
