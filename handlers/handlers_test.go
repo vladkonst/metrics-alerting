@@ -12,12 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/vladkonst/metrics-alerting/app"
+	"github.com/vladkonst/metrics-alerting/internal/configs"
 )
 
 var a *app.App
 
 func init() {
-	a = app.NewApp(nil)
+	cfg := configs.ServerCfg{IntervalsCfg: &configs.ServerIntervalsCfg{}, NetAddressCfg: &configs.NetAddressCfg{}}
+	a = app.NewApp(nil, &cfg)
 
 	go func() {
 		for range *a.MetricsChan {

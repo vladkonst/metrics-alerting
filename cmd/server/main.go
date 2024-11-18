@@ -8,6 +8,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/vladkonst/metrics-alerting/app"
+	"github.com/vladkonst/metrics-alerting/internal/configs"
 )
 
 func main() {
@@ -18,6 +19,8 @@ func main() {
 		<-c
 		done <- true
 	}()
-	app := app.NewApp(&done)
+
+	cfg := configs.GetServerConfig()
+	app := app.NewApp(&done, cfg)
 	app.Run()
 }

@@ -20,8 +20,7 @@ type App struct {
 	cfg             *configs.ServerCfg
 }
 
-func NewApp(done *chan bool) *App {
-	cfg := configs.GetServerConfig()
+func NewApp(done *chan bool, cfg *configs.ServerCfg) *App {
 	ps := cfg.IntervalsCfg.DatabaseDSN
 	var s handlers.MetricRepository
 	var conn *sql.DB
