@@ -2,14 +2,13 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/vladkonst/metrics-alerting/internal/configs"
-	"github.com/vladkonst/metrics-alerting/internal/storage"
-	"github.com/vladkonst/metrics-alerting/routers"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/vladkonst/metrics-alerting/app"
 )
 
 func main() {
@@ -20,24 +19,9 @@ func main() {
 		<-c
 		done <- true
 	}()
-
-	cfg := configs.GetServerConfig()
-	memStorage := storage.GetStorage()
-	fileStorage, err := storage.NewFileManager(cfg.IntervalsCfg.FileStoragePath, cfg.IntervalsCfg.Restore, cfg.IntervalsCfg.StoreInterval, memStorage.GetMetricsChanel())
+	app, err := app.NewApp(&done)
 	if err != nil {
 		log.Panic(err)
 	}
-
-	go func() {
-		if err := fileStorage.ProcessMetrics(); err != nil {
-			log.Panic(err)
-		}
-	}()
-
-	go func() {
-		log.Panic(http.ListenAndServe(cfg.NetAddressCfg.String(), routers.GetRouter(memStorage)))
-	}()
-
-	<-done
-	fileStorage.LoadMetrics()
+	app.Run()
 }

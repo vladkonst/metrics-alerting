@@ -11,17 +11,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/vladkonst/metrics-alerting/internal/storage"
-	"github.com/vladkonst/metrics-alerting/routers"
+	"github.com/vladkonst/metrics-alerting/app"
 )
 
-var memStorage *storage.MemStorage
+var a *app.App
 
 func init() {
-	memStorage = storage.GetStorage()
-	ch := memStorage.GetMetricsChanel()
+	a, _ = app.NewApp(nil)
+
 	go func() {
-		for range *ch {
+		for range *a.MetricsChan {
 			continue
 		}
 	}()
@@ -45,7 +44,7 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string, rBody i
 }
 
 func TestGzipCompression(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -91,7 +90,7 @@ func TestGzipCompression(t *testing.T) {
 }
 
 func TestUpdateMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -154,7 +153,7 @@ func TestUpdateMetric(t *testing.T) {
 }
 
 func TestGetGaugeMetricValue(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -182,7 +181,7 @@ func TestGetGaugeMetricValue(t *testing.T) {
 }
 
 func TestGetCounterMetricValue(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -210,7 +209,7 @@ func TestGetCounterMetricValue(t *testing.T) {
 }
 
 func TestUpdateGaugeMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -261,7 +260,7 @@ func TestUpdateGaugeMetric(t *testing.T) {
 }
 
 func TestUpdateCounterMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string

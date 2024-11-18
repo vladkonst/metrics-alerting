@@ -2,12 +2,9 @@ package storage
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
-
-var once sync.Once
 
 type MemStorage struct {
 	gauges    map[string]*models.Metrics
@@ -15,7 +12,10 @@ type MemStorage struct {
 	metricsCh *chan models.Metrics
 }
 
-var storage MemStorage
+func NewMemStorage(metricsCh *chan models.Metrics) *MemStorage {
+	storage := MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
+	return &storage
+}
 
 func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
 	countersValues := make(map[string]int64, len(m.counters))
@@ -27,10 +27,6 @@ func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
 	return countersValues, nil
 }
 
-func (m *MemStorage) GetMetricsChanel() *chan models.Metrics {
-	return m.metricsCh
-}
-
 func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	gaugesValues := make(map[string]float64, len(m.gauges))
 
@@ -39,16 +35,6 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	}
 
 	return gaugesValues, nil
-}
-
-func GetStorage() *MemStorage {
-	once.Do(
-		func() {
-			metricsCh := make(chan models.Metrics)
-			storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: &metricsCh}
-
-		})
-	return &storage
 }
 
 func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) {
