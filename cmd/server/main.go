@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,9 +18,6 @@ func main() {
 		<-c
 		done <- true
 	}()
-	app, err := app.NewApp(&done)
-	if err != nil {
-		log.Panic(err)
-	}
+	app := app.NewApp(&done)
 	app.Run()
 }

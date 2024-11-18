@@ -17,7 +17,7 @@ import (
 var a *app.App
 
 func init() {
-	a, _ = app.NewApp(nil)
+	a = app.NewApp(nil)
 
 	go func() {
 		for range *a.MetricsChan {

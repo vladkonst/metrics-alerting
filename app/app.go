@@ -1,11 +1,9 @@
 package app
 
 import (
-	"context"
 	"database/sql"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vladkonst/metrics-alerting/handlers"
@@ -22,15 +20,15 @@ type App struct {
 	cfg             *configs.ServerCfg
 }
 
-func NewApp(done *chan bool) (*App, error) {
+func NewApp(done *chan bool) *App {
 	cfg := configs.GetServerConfig()
 	ps := cfg.IntervalsCfg.DatabaseDSN
 	var s handlers.MetricRepository
+	var conn *sql.DB
 	metricsCh := make(chan models.Metrics)
 	s = storage.NewMemStorage(&metricsCh)
-	conn, err := sql.Open("pgx", ps)
-	if err != nil {
-		return nil, err
+	if ps != "" {
+		conn, _ = sql.Open("pgx", ps)
 	}
 	// switch ps {
 	// case "":
@@ -45,7 +43,7 @@ func NewApp(done *chan bool) (*App, error) {
 	// }
 
 	sp := &handlers.StorageProvider{Storage: s, MetricsChan: &metricsCh, DB: conn}
-	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}, nil
+	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}
 }
 
 func (a *App) GetMetricsChanel() *chan models.Metrics {
@@ -57,19 +55,6 @@ func (a *App) GetStorage() handlers.MetricRepository {
 }
 
 func (a App) Run() {
-	ps := a.cfg.IntervalsCfg.DatabaseDSN
-	db, err := sql.Open("pgx", ps)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	defer db.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-	if err = db.PingContext(ctx); err != nil {
-		log.Panic(err)
-	}
-
 	fileStorage, err := storage.NewFileManager(a.cfg.IntervalsCfg.FileStoragePath, a.cfg.IntervalsCfg.Restore, a.cfg.IntervalsCfg.StoreInterval, a.MetricsChan, a.Storage)
 	if err != nil {
 		log.Panic(err)
