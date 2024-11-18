@@ -1,61 +1,106 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/vladkonst/metrics-alerting/internal/agent"
 	"github.com/vladkonst/metrics-alerting/internal/configs"
-	"github.com/vladkonst/metrics-alerting/internal/metrics"
+	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
-func sendGaugeMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
-	for k, v := range m.Gauges {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/gauge/%v/%v", serverAddr.String(), k, v), "text/plain", nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-		resBody, _ := io.ReadAll(resp.Body)
-		log.Println(string(resBody))
-		log.Println(resp.StatusCode)
-		log.Println(resp.Header.Get("Content-Type"))
-		resp.Body.Close()
+func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Println(err)
+		return
 	}
+
+	buff := bytes.NewBuffer(nil)
+	zb := gzip.NewWriter(buff)
+	_, err = zb.Write(b)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	err = zb.Close()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/update/", serverAddr.String()), buff)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	resBody, _ := io.ReadAll(resp.Body)
+	log.Println("Body: ", string(resBody))
+	log.Println("Status: ", resp.StatusCode)
+	log.Println("Content-Type: ", resp.Header.Get("Content-Type"))
+	log.Println("Content-Encoding: ", resp.Header.Values("Content-Encoding"))
+	resp.Body.Close()
 }
 
-func sendCounterMetrics(serverAddr *configs.NetAddressCfg, m *metrics.Metrics) {
-	for k, v := range m.Counters {
-		resp, err := http.Post(fmt.Sprintf("http://%s/update/counter/%v/%v", serverAddr.String(), k, v), "text/plain", nil)
-		if err != nil {
-			log.Fatal(err)
+func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
+	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
+	metrics := make(map[string]models.Metrics)
+	for {
+		select {
+		case <-reprotTicker.C:
+			for _, metric := range metrics {
+				sendRequest(&metric, cfg.NetAddressCfg)
+			}
+		case metric := <-*metricsCh:
+			metrics[metric.ID] = metric
 		}
-		resBody, _ := io.ReadAll(resp.Body)
-		log.Println(string(resBody))
-		log.Println(resp.StatusCode)
-		log.Println(resp.Header.Get("Content-Type"))
-		resp.Body.Close()
 	}
 }
 
 func main() {
+	done := make(chan bool)
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		<-c
+		done <- true
+	}()
 	cfg := configs.GetClientConfig()
-	metrics := metrics.Metrics{Gauges: make(map[string]float64), Counters: make(map[string]int)}
-	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
+	metricsStorage := agent.NewMetricsStorage()
+	metricsStorage.InitMetrics()
 	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+	metricsCh := make(chan models.Metrics)
+
+	go func() {
+		sendMetrics(cfg, &metricsCh)
+	}()
 
 	for {
 		select {
 		case <-pollTicker.C:
-			metrics.UpdateGaugeMetrics()
-		default:
-		}
-		select {
-		case <-reprotTicker.C:
-			sendGaugeMetrics(cfg.NetAddressCfg, &metrics)
-			sendCounterMetrics(cfg.NetAddressCfg, &metrics)
-		default:
+			metricsStorage.UpdateMetrics(&metricsCh)
+		case <-done:
+			return
 		}
 	}
 }
