@@ -29,7 +29,8 @@ func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 	case "":
 		s = storage.NewMemStorage(&metricsCh)
 	default:
-		conn, err := sql.Open("pgx", ps)
+		var err error
+		conn, err = sql.Open("pgx", ps)
 		if err != nil {
 			return nil, err
 		}
