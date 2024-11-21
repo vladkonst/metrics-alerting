@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"time"
@@ -40,7 +41,7 @@ func (fm *FileManager) InitMetrics(storage handlers.MetricRepository) error {
 	}
 
 	for _, metric := range fm.Metrics {
-		_, err = storage.AddMetric(&metric)
+		_, err = storage.AddMetric(context.Background(), &metric)
 		if err != nil {
 			return err
 		}

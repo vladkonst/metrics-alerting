@@ -20,29 +20,26 @@ type App struct {
 	cfg             *configs.ServerCfg
 }
 
-func NewApp(done *chan bool, cfg *configs.ServerCfg) *App {
+func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 	ps := cfg.IntervalsCfg.DatabaseDSN
 	var s handlers.MetricRepository
 	var conn *sql.DB
 	metricsCh := make(chan models.Metrics)
 	s = storage.NewMemStorage(&metricsCh)
-	if ps != "" {
-		conn, _ = sql.Open("pgx", ps)
-	}
-	// switch ps {
-	// case "":
-	// 	s = storage.NewMemStorage(&metricsCh)
-	// default:
-	// 	conn, err := sql.Open("pgx", ps)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
+	switch ps {
+	case "":
+		s = storage.NewMemStorage(&metricsCh)
+	default:
+		conn, err := sql.Open("pgx", ps)
+		if err != nil {
+			return nil, err
+		}
 
-	// 	s = storage.NewPGStorage(conn)
-	// }
+		s = storage.NewPGStorage(conn)
+	}
 
 	sp := &handlers.StorageProvider{Storage: s, MetricsChan: &metricsCh, DB: conn}
-	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}
+	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}, nil
 }
 
 func (a *App) GetMetricsChanel() *chan models.Metrics {

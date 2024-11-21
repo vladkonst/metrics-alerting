@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,6 +22,10 @@ func main() {
 	}()
 
 	cfg := configs.GetServerConfig()
-	app := app.NewApp(&done, cfg)
+	app, err := app.NewApp(&done, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	app.Run()
 }

@@ -19,7 +19,7 @@ var a *app.App
 
 func init() {
 	cfg := configs.ServerCfg{IntervalsCfg: &configs.ServerIntervalsCfg{}, NetAddressCfg: &configs.NetAddressCfg{}}
-	a = app.NewApp(nil, &cfg)
+	a, _ = app.NewApp(nil, &cfg)
 
 	go func() {
 		for range *a.MetricsChan {

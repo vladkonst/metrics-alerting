@@ -87,10 +87,10 @@ func LogRequest(next http.Handler) http.Handler {
 }
 
 type MetricRepository interface {
-	AddMetric(*models.Metrics) (*models.Metrics, error)
-	GetMetric(*models.Metrics) (*models.Metrics, error)
-	GetGaugesValues() (map[string]float64, error)
-	GetCountersValues() (map[string]int64, error)
+	AddMetric(context.Context, *models.Metrics) (*models.Metrics, error)
+	GetMetric(context.Context, *models.Metrics) (*models.Metrics, error)
+	GetGaugesValues(context.Context) (map[string]float64, error)
+	GetCountersValues(context.Context) (map[string]int64, error)
 }
 
 type StorageProvider struct {
@@ -100,7 +100,7 @@ type StorageProvider struct {
 }
 
 func (sp *StorageProvider) PingDB(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
 	defer cancel()
 	if err := sp.DB.PingContext(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -115,7 +115,10 @@ func (sp *StorageProvider) GetMetric(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	metric, err := sp.Storage.GetMetric(metric)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metric, err := sp.Storage.GetMetric(ctx, metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -137,7 +140,9 @@ func (sp *StorageProvider) UpdateMetric(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	metric, err := sp.Storage.AddMetric(metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metric, err := sp.Storage.AddMetric(ctx, metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -154,13 +159,15 @@ func (sp *StorageProvider) UpdateMetric(w http.ResponseWriter, r *http.Request) 
 
 func (sp *StorageProvider) GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	gauges, err := sp.Storage.GetGaugesValues()
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	gauges, err := sp.Storage.GetGaugesValues(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	counters, err := sp.Storage.GetCountersValues()
+	counters, err := sp.Storage.GetCountersValues(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -203,7 +210,9 @@ func (sp *StorageProvider) GetMetricsPage(w http.ResponseWriter, r *http.Request
 
 func (sp *StorageProvider) GetGaugeMetricValue(w http.ResponseWriter, r *http.Request) {
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "gauge"}
-	gauge, err := sp.Storage.GetMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	gauge, err := sp.Storage.GetMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -215,7 +224,9 @@ func (sp *StorageProvider) GetGaugeMetricValue(w http.ResponseWriter, r *http.Re
 
 func (sp *StorageProvider) GetCounterMetricValue(w http.ResponseWriter, r *http.Request) {
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "counter"}
-	counter, err := sp.Storage.GetMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	counter, err := sp.Storage.GetMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -234,7 +245,9 @@ func (sp *StorageProvider) UpdateGaugeMetric(w http.ResponseWriter, r *http.Requ
 	}
 
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), Value: &v, MType: "gauge"}
-	_, err = sp.Storage.AddMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	_, err = sp.Storage.AddMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -252,7 +265,9 @@ func (sp *StorageProvider) UpdateCounterMetric(w http.ResponseWriter, r *http.Re
 	}
 
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), Delta: &v, MType: "counter"}
-	_, err = sp.Storage.AddMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	_, err = sp.Storage.AddMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 
 	"github.com/vladkonst/metrics-alerting/internal/models"
@@ -17,7 +18,7 @@ func NewMemStorage(metricsCh *chan models.Metrics) *MemStorage {
 	return &storage
 }
 
-func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
+func (m *MemStorage) GetCountersValues(ctx context.Context) (map[string]int64, error) {
 	countersValues := make(map[string]int64, len(m.counters))
 
 	for k, v := range m.counters {
@@ -27,7 +28,7 @@ func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
 	return countersValues, nil
 }
 
-func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
+func (m *MemStorage) GetGaugesValues(ctx context.Context) (map[string]float64, error) {
 	gaugesValues := make(map[string]float64, len(m.gauges))
 
 	for k, v := range m.gauges {
@@ -37,7 +38,7 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	return gaugesValues, nil
 }
 
-func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) {
+func (m *MemStorage) AddMetric(ctx context.Context, metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
 		if _, ok := m.counters[metric.ID]; !ok {
@@ -54,7 +55,7 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 	}
 }
 
-func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) {
+func (m *MemStorage) GetMetric(ctx context.Context, metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
 		if counter, ok := m.counters[metric.ID]; !ok {
