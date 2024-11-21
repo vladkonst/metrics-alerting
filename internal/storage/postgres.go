@@ -58,6 +58,12 @@ func (s *PGStorage) GetCountersValues(ctx context.Context) (map[string]int64, er
 
 		counters[name] = value
 	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return counters, nil
 }
 
@@ -79,6 +85,12 @@ func (s *PGStorage) GetGaugesValues(ctx context.Context) (map[string]float64, er
 
 		gauges[name] = value
 	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return gauges, nil
 }
 

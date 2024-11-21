@@ -25,7 +25,6 @@ func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 	var s handlers.MetricRepository
 	var conn *sql.DB
 	metricsCh := make(chan models.Metrics)
-	s = storage.NewMemStorage(&metricsCh)
 	switch ps {
 	case "":
 		s = storage.NewMemStorage(&metricsCh)

@@ -100,6 +100,10 @@ type StorageProvider struct {
 }
 
 func (sp *StorageProvider) PingDB(w http.ResponseWriter, r *http.Request) {
+	if sp.DB == nil {
+		http.Error(w, "database connection failed", http.StatusInternalServerError)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
 	defer cancel()
 	if err := sp.DB.PingContext(ctx); err != nil {
