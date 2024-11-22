@@ -28,7 +28,7 @@ func (s PGStorage) Bootstrap(ctx context.Context) error {
 	tx.ExecContext(ctx, `
 	    CREATE TABLE counters (
 	        name varchar PRIMARY KEY,
-			value integer
+			value bigint
 	    )
 	`)
 	tx.ExecContext(ctx, `
