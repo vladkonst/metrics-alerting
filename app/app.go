@@ -124,6 +124,19 @@ func (a *App) GetRouter() http.Handler {
 		})
 	})
 
+	r.Route("/updates", func(r chi.Router) {
+		r.Post("/", a.StorageProvider.UpdateMetrics)
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		})
+		r.Put("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		})
+		r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
+		})
+	})
+
 	r.Route("/update", func(r chi.Router) {
 		r.Post("/", a.StorageProvider.UpdateMetric)
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {

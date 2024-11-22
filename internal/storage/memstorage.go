@@ -38,6 +38,28 @@ func (m *MemStorage) GetGaugesValues(ctx context.Context) (map[string]float64, e
 	return gaugesValues, nil
 }
 
+func (m *MemStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([]models.Metrics, error) {
+	for i, metric := range metrics {
+		switch metric.MType {
+		case "counter":
+			if _, ok := m.counters[metric.ID]; !ok {
+				m.counters[metric.ID] = &metric
+			} else {
+				*(m.counters[metric.ID].Delta) += *metric.Delta
+				metrics[i] = *m.counters[metric.ID]
+			}
+			metrics[i] = *m.counters[metric.ID]
+		case "gauge":
+			m.gauges[metric.ID] = &metric
+			metrics[i] = *m.gauges[metric.ID]
+		default:
+			return nil, errors.New("provided metric type is incorrect")
+		}
+	}
+
+	return metrics, nil
+}
+
 func (m *MemStorage) AddMetric(ctx context.Context, metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":

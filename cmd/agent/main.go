@@ -18,8 +18,14 @@ import (
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
-func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
-	b, err := json.Marshal(v)
+func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg) {
+	metrics := make([]models.Metrics, 0)
+	for _, v := range m {
+		metrics = append(metrics, v)
+	}
+
+	b, err := json.Marshal(metrics)
+	fmt.Println(string(b))
 	if err != nil {
 		log.Println(err)
 		return
@@ -39,7 +45,7 @@ func sendRequest(v *models.Metrics, serverAddr *configs.NetAddressCfg) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/update/", serverAddr.String()), buff)
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/updates/", serverAddr.String()), buff)
 	if err != nil {
 		log.Println(err)
 		return
@@ -68,9 +74,7 @@ func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
 	for {
 		select {
 		case <-reprotTicker.C:
-			for _, metric := range metrics {
-				sendRequest(&metric, cfg.NetAddressCfg)
-			}
+			sendRequest(metrics, cfg.NetAddressCfg)
 		case metric := <-*metricsCh:
 			metrics[metric.ID] = metric
 		}

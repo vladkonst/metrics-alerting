@@ -87,6 +87,7 @@ func LogRequest(next http.Handler) http.Handler {
 }
 
 type MetricRepository interface {
+	AddMetrics(context.Context, []models.Metrics) ([]models.Metrics, error)
 	AddMetric(context.Context, *models.Metrics) (*models.Metrics, error)
 	GetMetric(context.Context, *models.Metrics) (*models.Metrics, error)
 	GetGaugesValues(context.Context) (map[string]float64, error)
@@ -132,6 +133,34 @@ func (sp *StorageProvider) GetMetric(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(metric); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+func (sp *StorageProvider) UpdateMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := make([]models.Metrics, 0)
+	dec := json.NewDecoder(r.Body)
+	w.Header().Set("Content-Type", "application/json")
+	if err := dec.Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metrics, err := sp.Storage.AddMetrics(ctx, metrics)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, metric := range metrics {
+		*sp.MetricsChan <- metric
 	}
 }
 
