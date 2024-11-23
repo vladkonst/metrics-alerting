@@ -95,6 +95,8 @@ func (s *PGStorage) GetGaugesValues(ctx context.Context) (map[string]float64, er
 }
 
 func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([]models.Metrics, error) {
+	addedCounters := make(map[string]bool)
+	addedGauges := make(map[string]bool)
 	tx, err := s.conn.Begin()
 	if err != nil {
 		return nil, err
@@ -106,12 +108,13 @@ func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([
 		switch metric.MType {
 		case "counter":
 			var counterValue int64
-			row := tx.QueryRowContext(ctx, `SELECT value  FROM counters WHERE name = $1`, metric.ID)
+			row := s.conn.QueryRowContext(ctx, `SELECT value  FROM counters WHERE name = $1`, metric.ID)
 			err := row.Scan(&counterValue)
-			if err != nil {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO counters (name, value) VALUES($1,$2)", metric.ID, metric.Delta); err != nil {
+			if _, ok := addedCounters[metric.ID]; err != nil && !ok {
+				if _, err := tx.ExecContext(ctx, "INSERT INTO counters (name, value) VALUES($1,$2)", metric.ID, *metric.Delta); err != nil {
 					return nil, err
 				}
+				addedCounters[metric.ID] = true
 			} else {
 				*metric.Delta = counterValue + *metric.Delta
 				if _, err := tx.ExecContext(ctx, "UPDATE counters SET value=$1 WHERE name=$2", *metric.Delta, metric.ID); err != nil {
@@ -120,11 +123,20 @@ func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([
 			}
 			metrics[i] = metric
 		case "gauge":
-			if _, err := tx.ExecContext(ctx, "UPDATE gauges SET value=$1 WHERE name=$2", *metric.Value, metric.ID); err != nil {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO gauges (name, value) VALUES($1,$2)", metric.ID, metric.Value); err != nil {
+			var gaugeName string
+			row := s.conn.QueryRowContext(ctx, `SELECT name  FROM counters WHERE name = $1`, metric.ID)
+			err := row.Scan(&gaugeName)
+			if _, ok := addedGauges[metric.ID]; err != nil && !ok {
+				if _, err := tx.ExecContext(ctx, "INSERT INTO gauges (name, value) VALUES($1,$2)", metric.ID, *metric.Value); err != nil {
+					return nil, err
+				}
+				addedGauges[metric.ID] = true
+			} else {
+				if _, err := tx.ExecContext(ctx, "UPDATE gauges SET value=$1 WHERE name=$2", *metric.Value, metric.ID); err != nil {
 					return nil, err
 				}
 			}
+
 		default:
 			return nil, errors.New("provided metric type is incorrect")
 		}
