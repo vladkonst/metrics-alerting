@@ -50,7 +50,7 @@ func (m *MemStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) (
 			}
 			metrics[i] = *m.counters[metric.ID]
 		case "gauge":
-			m.gauges[metric.ID].Value = metric.Value
+			m.gauges[metric.ID] = &metric
 			metrics[i] = *m.gauges[metric.ID]
 		default:
 			return nil, errors.New("provided metric type is incorrect")
