@@ -114,30 +114,22 @@ func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([
 				}
 			} else {
 				*metric.Delta = counterValue + *metric.Delta
-				if _, err := tx.ExecContext(ctx, "UPDATE counters SET value=$1 where name=$2", *metric.Delta, metric.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, "UPDATE counters SET value=$1 WHERE name=$2", *metric.Delta, metric.ID); err != nil {
 					return nil, err
 				}
 			}
 			metrics[i] = metric
 		case "gauge":
-			var gaugeValue float64
-			row := tx.QueryRowContext(ctx, `SELECT value  FROM gauges WHERE name = $1`, metric.ID)
-			err := row.Scan(&gaugeValue)
-			if err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE gauges SET value=$1 WHERE name=$2", *metric.Value, metric.ID); err != nil {
 				if _, err := tx.ExecContext(ctx, "INSERT INTO gauges (name, value) VALUES($1,$2)", metric.ID, metric.Value); err != nil {
 					return nil, err
 				}
-			} else {
-				*metric.Value = gaugeValue
-				if _, err := tx.ExecContext(ctx, "UPDATE gauges SET value=$1 where name=$2", *metric.Value, metric.ID); err != nil {
-					return nil, err
-				}
 			}
-			metrics[i] = metric
 		default:
 			return nil, errors.New("provided metric type is incorrect")
 		}
 	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
