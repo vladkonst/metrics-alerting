@@ -95,7 +95,7 @@ func (s *PGStorage) GetGaugesValues(ctx context.Context) (map[string]float64, er
 }
 
 func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([]models.Metrics, error) {
-	addedCounters := make(map[string]bool)
+	addedCounters := make(map[string]int64)
 	addedGauges := make(map[string]bool)
 	tx, err := s.conn.Begin()
 	if err != nil {
@@ -114,10 +114,10 @@ func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([
 				if _, err := tx.ExecContext(ctx, "INSERT INTO counters (name, value) VALUES($1,$2)", metric.ID, *metric.Delta); err != nil {
 					return nil, err
 				}
-				addedCounters[metric.ID] = true
+				addedCounters[metric.ID] += *metric.Delta
 			} else {
 				*metric.Delta = counterValue + *metric.Delta
-				if _, err := tx.ExecContext(ctx, "UPDATE counters SET value=$1 WHERE name=$2", *metric.Delta, metric.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, "UPDATE counters SET value=$1 WHERE name=$2", addedCounters[metric.ID]+*metric.Delta, metric.ID); err != nil {
 					return nil, err
 				}
 			}
