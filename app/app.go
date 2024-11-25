@@ -2,15 +2,22 @@ package app
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/vladkonst/metrics-alerting/handlers"
 	"github.com/vladkonst/metrics-alerting/internal/configs"
 	"github.com/vladkonst/metrics-alerting/internal/models"
 	"github.com/vladkonst/metrics-alerting/internal/storage"
 )
+
+var timings = []time.Duration{0, time.Second, time.Second * 3, time.Second * 5}
 
 type App struct {
 	Storage         handlers.MetricRepository
@@ -30,7 +37,7 @@ func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 		s = storage.NewMemStorage(&metricsCh)
 	default:
 		var err error
-		conn, err = sql.Open("pgx", ps)
+		conn, err = RetriableConnect(ps)
 		if err != nil {
 			return nil, err
 		}
@@ -40,6 +47,25 @@ func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 
 	sp := &handlers.StorageProvider{Storage: s, MetricsChan: &metricsCh, DB: conn}
 	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}, nil
+}
+
+func RetriableConnect(ps string) (*sql.DB, error) {
+	var err error
+	var conn *sql.DB
+	for i := 0; i < 4; i++ {
+		time.Sleep(timings[i])
+		conn, err = sql.Open("pgx", ps)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code) {
+				log.Println(err)
+				continue
+			}
+			return nil, err
+		}
+		return conn, nil
+	}
+	return nil, err
 }
 
 func (a *App) GetMetricsChanel() *chan models.Metrics {

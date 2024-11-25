@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,14 +20,20 @@ import (
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
-func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg) {
+var timings = []time.Duration{0, time.Second, time.Second * 3, time.Second * 5}
+
+func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int) {
+	if tryCount == 4 {
+		return
+	}
+
 	metrics := make([]models.Metrics, 0)
 	for _, v := range m {
 		metrics = append(metrics, v)
 	}
 
 	b, err := json.Marshal(metrics)
-	fmt.Println(string(b))
+
 	if err != nil {
 		log.Println(err)
 		return
@@ -54,9 +62,17 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg)
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
+	if tryCount > 0 {
+		time.Sleep(timings[tryCount])
+	}
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Println(err)
+		var opError *net.OpError
+		if errors.As(err, &opError) && opError.Op == "dial" {
+			go sendRequest(m, serverAddr, tryCount+1)
+		}
+		log.Printf("%T", err)
 		return
 	}
 
@@ -74,7 +90,7 @@ func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
 	for {
 		select {
 		case <-reprotTicker.C:
-			sendRequest(metrics, cfg.NetAddressCfg)
+			sendRequest(metrics, cfg.NetAddressCfg, 0)
 		case metric := <-*metricsCh:
 			metrics[metric.ID] = metric
 		}
