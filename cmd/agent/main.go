@@ -72,7 +72,6 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 		if errors.As(err, &opError) && opError.Op == "dial" {
 			go sendRequest(m, serverAddr, tryCount+1)
 		}
-		log.Printf("%T", err)
 		return
 	}
 

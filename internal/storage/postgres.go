@@ -124,7 +124,7 @@ func (s *PGStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([
 			metrics[i] = metric
 		case "gauge":
 			var gaugeName string
-			row := s.conn.QueryRowContext(ctx, `SELECT name  FROM counters WHERE name = $1`, metric.ID)
+			row := s.conn.QueryRowContext(ctx, `SELECT name  FROM gauges WHERE name = $1`, metric.ID)
 			err := row.Scan(&gaugeName)
 			if _, ok := addedGauges[metric.ID]; err != nil && !ok {
 				if _, err := tx.ExecContext(ctx, "INSERT INTO gauges (name, value) VALUES($1,$2)", metric.ID, *metric.Value); err != nil {
