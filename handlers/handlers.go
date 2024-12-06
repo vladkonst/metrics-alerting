@@ -1,10 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash"
 	"html/template"
 	"io"
 	"net/http"
@@ -17,6 +22,49 @@ import (
 	"github.com/vladkonst/metrics-alerting/internal/logger"
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
+
+type Hasher struct {
+	hash hash.Hash
+}
+
+func NewHasher(key string) *Hasher {
+	if key == "" {
+		return nil
+	}
+	hash := sha256.New()
+	return &Hasher{hash}
+}
+
+func (h *Hasher) HashBody(b []byte) (string, error) {
+	_, err := h.hash.Write(b)
+	if err != nil {
+		return "", errors.New("internal server error")
+	}
+
+	dst := h.hash.Sum(nil)
+	dstHex := hex.EncodeToString(dst)
+	return dstHex, nil
+}
+
+func (h *Hasher) HashMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "error reading body", http.StatusInternalServerError)
+			return
+		}
+
+		defer r.Body.Close()
+		dst, _ := h.HashBody(b)
+		src := r.Header.Get("HashSHA256")
+		if src != dst {
+			http.Error(w, "invalid hash provided", http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewBuffer(b))
+		next.ServeHTTP(w, r)
+	})
+}
 
 func GzipMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

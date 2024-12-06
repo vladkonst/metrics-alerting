@@ -25,12 +25,14 @@ type App struct {
 	StorageProvider *handlers.StorageProvider
 	done            *chan bool
 	cfg             *configs.ServerCfg
+	hasher          *handlers.Hasher
 }
 
 func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 	ps := cfg.IntervalsCfg.DatabaseDSN
 	var s handlers.MetricRepository
 	var conn *sql.DB
+	h := handlers.NewHasher(cfg.IntervalsCfg.HashKey)
 	metricsCh := make(chan models.Metrics)
 	switch ps {
 	case "":
@@ -46,7 +48,7 @@ func NewApp(done *chan bool, cfg *configs.ServerCfg) (*App, error) {
 	}
 
 	sp := &handlers.StorageProvider{Storage: s, MetricsChan: &metricsCh, DB: conn}
-	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg}, nil
+	return &App{Storage: s, MetricsChan: &metricsCh, StorageProvider: sp, done: done, cfg: cfg, hasher: h}, nil
 }
 
 func RetriableConnect(ps string) (*sql.DB, error) {
@@ -228,6 +230,10 @@ func (a *App) GetRouter() http.Handler {
 			http.Error(w, "Invalid metric type", http.StatusBadRequest)
 		})
 	})
+
+	if a.hasher != nil {
+		return handlers.GzipMiddleware(handlers.LogRequest(a.hasher.HashMiddleware(r)))
+	}
 
 	return handlers.GzipMiddleware(handlers.LogRequest(r))
 }

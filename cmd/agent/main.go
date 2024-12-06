@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net"
@@ -22,7 +25,29 @@ import (
 
 var timings = []time.Duration{0, time.Second, time.Second * 3, time.Second * 5}
 
-func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int) {
+type hasher struct {
+	hash hash.Hash
+}
+
+func NewHasher(key string) *hasher {
+	if key == "" {
+		return nil
+	}
+	hash := sha256.New()
+	return &hasher{hash}
+}
+
+func (h *hasher) hashBody(body []byte) []byte {
+	_, err := h.hash.Write(body)
+	if err != nil {
+		log.Panic("failed to hash request body")
+	}
+
+	dst := h.hash.Sum(nil)
+	return dst
+}
+
+func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int, h *hasher) {
 	if tryCount == 4 {
 		return
 	}
@@ -59,6 +84,11 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 		return
 	}
 
+	if h != nil {
+		hashedBody := h.hashBody(b)
+		req.Header.Set("HashSHA256", hex.EncodeToString(hashedBody))
+	}
+
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
@@ -70,7 +100,7 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	if err != nil {
 		var opError *net.OpError
 		if errors.As(err, &opError) && opError.Op == "dial" {
-			go sendRequest(m, serverAddr, tryCount+1)
+			go sendRequest(m, serverAddr, tryCount+1, h)
 		}
 		return
 	}
@@ -83,13 +113,13 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	resp.Body.Close()
 }
 
-func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
+func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics, h *hasher) {
 	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
 	metrics := make(map[string]models.Metrics)
 	for {
 		select {
 		case <-reprotTicker.C:
-			sendRequest(metrics, cfg.NetAddressCfg, 0)
+			sendRequest(metrics, cfg.NetAddressCfg, 0, h)
 		case metric := <-*metricsCh:
 			metrics[metric.ID] = metric
 		}
@@ -109,9 +139,9 @@ func main() {
 	metricsStorage.InitMetrics()
 	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
 	metricsCh := make(chan models.Metrics)
-
+	h := NewHasher(cfg.IntervalsCfg.HashKey)
 	go func() {
-		sendMetrics(cfg, &metricsCh)
+		sendMetrics(cfg, &metricsCh, h)
 	}()
 
 	for {
