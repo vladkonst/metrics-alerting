@@ -42,6 +42,8 @@ func GetServerConfig() *ServerCfg {
 	flag.Var(addr, "a", "Server net address host:port")
 	flag.IntVar(&intervalCfg.StoreInterval, "i", intervalCfg.StoreInterval, "store interval to load metrics to the file")
 	flag.StringVar(&intervalCfg.FileStoragePath, "f", intervalCfg.FileStoragePath, "file with stored metrics")
+	flag.StringVar(&intervalCfg.DatabaseDSN, "d", "", "database connection string")
+	// flag.StringVar(&intervalCfg.DatabaseDSN, "d", "host=localhost user=postgres password=postgres dbname=postgres sslmode=disable", "database connection string")
 	flag.BoolVar(&intervalCfg.Restore, "r", intervalCfg.Restore, "allow metrics load from file on server start")
 	flag.Parse()
 	if err := env.Parse(intervalCfg); err != nil {

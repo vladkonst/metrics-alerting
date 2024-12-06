@@ -11,17 +11,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/vladkonst/metrics-alerting/internal/storage"
-	"github.com/vladkonst/metrics-alerting/routers"
+	"github.com/vladkonst/metrics-alerting/app"
+	"github.com/vladkonst/metrics-alerting/internal/configs"
 )
 
-var memStorage *storage.MemStorage
+var a *app.App
 
 func init() {
-	memStorage = storage.GetStorage()
-	ch := memStorage.GetMetricsChanel()
+	cfg := configs.ServerCfg{IntervalsCfg: &configs.ServerIntervalsCfg{}, NetAddressCfg: &configs.NetAddressCfg{}}
+	a, _ = app.NewApp(nil, &cfg)
+
 	go func() {
-		for range *ch {
+		for range *a.MetricsChan {
 			continue
 		}
 	}()
@@ -45,7 +46,7 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string, rBody i
 }
 
 func TestGzipCompression(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -90,8 +91,81 @@ func TestGzipCompression(t *testing.T) {
 	}
 }
 
+func TestUpdatesMetric(t *testing.T) {
+	ts := httptest.NewServer(a.GetRouter())
+	defer ts.Close()
+	tests := []struct {
+		name    string
+		request string
+		want    want
+		body    string
+	}{
+		{
+			name: "without body test",
+			want: want{
+				contentType: "text/plain; charset=utf-8",
+				statusCode:  500,
+				body:        "",
+			},
+			request: "/updates",
+			body:    "",
+		},
+		{
+			name: "unsupported type test",
+			want: want{
+				contentType: "text/plain; charset=utf-8",
+				statusCode:  422,
+				body:        "",
+			},
+			request: "/updates",
+			body:    `[{"ID": "test", "MType": "unsupported", "Delta": 0, "Value": 0.0}]`,
+		},
+		{
+			name: "success one metric update test",
+			want: want{
+				contentType: "application/json",
+				statusCode:  200,
+				body:        `[{"id": "test", "type": "gauge", "value": 1.1}]`,
+			},
+			request: "/updates",
+			body:    `[{"id": "test", "type": "gauge", "value": 1.1}]`,
+		},
+		{
+			name: "success several metrics update test",
+			want: want{
+				contentType: "application/json",
+				statusCode:  200,
+				body:        `[{"id": "test1", "type": "gauge", "value": 1.1},{"id": "test2", "type": "counter", "delta": 1}]`,
+			},
+			request: "/updates",
+			body:    `[{"id": "test1", "type": "gauge", "value": 1.1},{"id": "test2", "type": "counter", "delta": 1}]`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buff := bytes.NewBufferString(test.body)
+			req, err := http.NewRequest("POST", ts.URL+test.request, buff)
+			require.NoError(t, err)
+			req.Header.Add("Content-Type", "application/json")
+			req.Header.Set("Accept-Encoding", "")
+			resp, err := ts.Client().Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, test.want.statusCode, resp.StatusCode)
+			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"))
+			if test.want.body != "" {
+				body := make([]byte, 1024)
+				n, _ := resp.Body.Read(body)
+				defer resp.Body.Close()
+				assert.JSONEq(t, test.want.body, string(body[:n]))
+			}
+		})
+	}
+}
+
 func TestUpdateMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -154,7 +228,7 @@ func TestUpdateMetric(t *testing.T) {
 }
 
 func TestGetGaugeMetricValue(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -182,7 +256,7 @@ func TestGetGaugeMetricValue(t *testing.T) {
 }
 
 func TestGetCounterMetricValue(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -210,7 +284,7 @@ func TestGetCounterMetricValue(t *testing.T) {
 }
 
 func TestUpdateGaugeMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string
@@ -261,7 +335,7 @@ func TestUpdateGaugeMetric(t *testing.T) {
 }
 
 func TestUpdateCounterMetric(t *testing.T) {
-	ts := httptest.NewServer(routers.GetRouter(memStorage))
+	ts := httptest.NewServer(a.GetRouter())
 	defer ts.Close()
 	tests := []struct {
 		name    string

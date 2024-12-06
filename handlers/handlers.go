@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -85,24 +87,32 @@ func LogRequest(next http.Handler) http.Handler {
 }
 
 type MetricRepository interface {
-	AddMetric(*models.Metrics) (*models.Metrics, error)
-	GetMetric(*models.Metrics) (*models.Metrics, error)
-	GetGaugesValues() (map[string]float64, error)
-	GetCountersValues() (map[string]int64, error)
-	GetMetricsChanel() *chan models.Metrics
+	AddMetrics(context.Context, []models.Metrics) ([]models.Metrics, error)
+	AddMetric(context.Context, *models.Metrics) (*models.Metrics, error)
+	GetMetric(context.Context, *models.Metrics) (*models.Metrics, error)
+	GetGaugesValues(context.Context) (map[string]float64, error)
+	GetCountersValues(context.Context) (map[string]int64, error)
 }
 
 type StorageProvider struct {
-	handler func(http.ResponseWriter, *http.Request, MetricRepository)
-	storage MetricRepository
+	Storage     MetricRepository
+	DB          *sql.DB
+	MetricsChan *chan models.Metrics
 }
 
-func NewStorageProvider(handlerToWrap func(http.ResponseWriter, *http.Request, MetricRepository), memStorage MetricRepository) http.HandlerFunc {
-	sp := &StorageProvider{handlerToWrap, memStorage}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sp.handler(w, r, sp.storage) })
+func (sp *StorageProvider) PingDB(w http.ResponseWriter, r *http.Request) {
+	if sp.DB == nil {
+		http.Error(w, "database connection failed", http.StatusInternalServerError)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
+	defer cancel()
+	if err := sp.DB.PingContext(ctx); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
-func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+func (sp *StorageProvider) GetMetric(w http.ResponseWriter, r *http.Request) {
 	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
 	w.Header().Set("Content-Type", "application/json")
@@ -110,7 +120,10 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	metric, err := memStorage.GetMetric(metric)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metric, err := sp.Storage.GetMetric(ctx, metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -123,8 +136,35 @@ func GetMetric(w http.ResponseWriter, r *http.Request, memStorage MetricReposito
 	}
 }
 
-func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
-	metricsCh := memStorage.GetMetricsChanel()
+func (sp *StorageProvider) UpdateMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := make([]models.Metrics, 0)
+	dec := json.NewDecoder(r.Body)
+	w.Header().Set("Content-Type", "application/json")
+	if err := dec.Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metrics, err := sp.Storage.AddMetrics(ctx, metrics)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, metric := range metrics {
+		*sp.MetricsChan <- metric
+	}
+}
+
+func (sp *StorageProvider) UpdateMetric(w http.ResponseWriter, r *http.Request) {
 	metric := new(models.Metrics)
 	dec := json.NewDecoder(r.Body)
 	w.Header().Set("Content-Type", "application/json")
@@ -133,7 +173,9 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 		return
 	}
 
-	metric, err := memStorage.AddMetric(metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	metric, err := sp.Storage.AddMetric(ctx, metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -145,18 +187,20 @@ func UpdateMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepos
 		return
 	}
 
-	*metricsCh <- *metric
+	*sp.MetricsChan <- *metric
 }
 
-func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+func (sp *StorageProvider) GetMetricsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	gauges, err := memStorage.GetGaugesValues()
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	gauges, err := sp.Storage.GetGaugesValues(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	counters, err := memStorage.GetCountersValues()
+	counters, err := sp.Storage.GetCountersValues(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -197,9 +241,11 @@ func GetMetricsPage(w http.ResponseWriter, r *http.Request, memStorage MetricRep
 	}
 }
 
-func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+func (sp *StorageProvider) GetGaugeMetricValue(w http.ResponseWriter, r *http.Request) {
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "gauge"}
-	gauge, err := memStorage.GetMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	gauge, err := sp.Storage.GetMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -209,9 +255,11 @@ func GetGaugeMetricValue(w http.ResponseWriter, r *http.Request, memStorage Metr
 	io.WriteString(w, fmt.Sprintf("%g", *gauge.Value))
 }
 
-func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
+func (sp *StorageProvider) GetCounterMetricValue(w http.ResponseWriter, r *http.Request) {
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), MType: "counter"}
-	counter, err := memStorage.GetMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	counter, err := sp.Storage.GetMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -221,8 +269,8 @@ func GetCounterMetricValue(w http.ResponseWriter, r *http.Request, memStorage Me
 	io.WriteString(w, fmt.Sprintf("%d", *counter.Delta))
 }
 
-func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
-	metricsCh := memStorage.GetMetricsChanel()
+func (sp *StorageProvider) UpdateGaugeMetric(w http.ResponseWriter, r *http.Request) {
+	metricsCh := sp.MetricsChan
 	v, err := strconv.ParseFloat(chi.URLParam(r, "value"), 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
@@ -230,7 +278,9 @@ func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage Metric
 	}
 
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), Value: &v, MType: "gauge"}
-	_, err = memStorage.AddMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	_, err = sp.Storage.AddMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -239,8 +289,8 @@ func UpdateGaugeMetric(w http.ResponseWriter, r *http.Request, memStorage Metric
 	*metricsCh <- metric
 }
 
-func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage MetricRepository) {
-	metricsCh := memStorage.GetMetricsChanel()
+func (sp *StorageProvider) UpdateCounterMetric(w http.ResponseWriter, r *http.Request) {
+	metricsCh := sp.MetricsChan
 	v, err := strconv.ParseInt(chi.URLParam(r, "value"), 10, 64)
 	if err != nil {
 		http.Error(w, "Bad request.", http.StatusBadRequest)
@@ -248,7 +298,9 @@ func UpdateCounterMetric(w http.ResponseWriter, r *http.Request, memStorage Metr
 	}
 
 	metric := models.Metrics{ID: chi.URLParam(r, "name"), Delta: &v, MType: "counter"}
-	_, err = memStorage.AddMetric(&metric)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	_, err = sp.Storage.AddMetric(ctx, &metric)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return

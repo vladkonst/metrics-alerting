@@ -1,13 +1,11 @@
 package storage
 
 import (
+	"context"
 	"errors"
-	"sync"
 
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
-
-var once sync.Once
 
 type MemStorage struct {
 	gauges    map[string]*models.Metrics
@@ -15,9 +13,12 @@ type MemStorage struct {
 	metricsCh *chan models.Metrics
 }
 
-var storage MemStorage
+func NewMemStorage(metricsCh *chan models.Metrics) *MemStorage {
+	storage := MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: metricsCh}
+	return &storage
+}
 
-func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
+func (m *MemStorage) GetCountersValues(ctx context.Context) (map[string]int64, error) {
 	countersValues := make(map[string]int64, len(m.counters))
 
 	for k, v := range m.counters {
@@ -27,11 +28,7 @@ func (m *MemStorage) GetCountersValues() (map[string]int64, error) {
 	return countersValues, nil
 }
 
-func (m *MemStorage) GetMetricsChanel() *chan models.Metrics {
-	return m.metricsCh
-}
-
-func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
+func (m *MemStorage) GetGaugesValues(ctx context.Context) (map[string]float64, error) {
 	gaugesValues := make(map[string]float64, len(m.gauges))
 
 	for k, v := range m.gauges {
@@ -41,17 +38,29 @@ func (m *MemStorage) GetGaugesValues() (map[string]float64, error) {
 	return gaugesValues, nil
 }
 
-func GetStorage() *MemStorage {
-	once.Do(
-		func() {
-			metricsCh := make(chan models.Metrics)
-			storage = MemStorage{gauges: make(map[string]*models.Metrics), counters: make(map[string]*models.Metrics), metricsCh: &metricsCh}
+func (m *MemStorage) AddMetrics(ctx context.Context, metrics []models.Metrics) ([]models.Metrics, error) {
+	for i, metric := range metrics {
+		switch metric.MType {
+		case "counter":
+			if _, ok := m.counters[metric.ID]; !ok {
+				m.counters[metric.ID] = &metric
+			} else {
+				*(m.counters[metric.ID].Delta) += *metric.Delta
+				metrics[i] = *m.counters[metric.ID]
+			}
+			metrics[i] = *m.counters[metric.ID]
+		case "gauge":
+			m.gauges[metric.ID] = &metric
+			metrics[i] = *m.gauges[metric.ID]
+		default:
+			return nil, errors.New("provided metric type is incorrect")
+		}
+	}
 
-		})
-	return &storage
+	return metrics, nil
 }
 
-func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) {
+func (m *MemStorage) AddMetric(ctx context.Context, metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
 		if _, ok := m.counters[metric.ID]; !ok {
@@ -68,7 +77,7 @@ func (m *MemStorage) AddMetric(metric *models.Metrics) (*models.Metrics, error) 
 	}
 }
 
-func (m *MemStorage) GetMetric(metric *models.Metrics) (*models.Metrics, error) {
+func (m *MemStorage) GetMetric(ctx context.Context, metric *models.Metrics) (*models.Metrics, error) {
 	switch metric.MType {
 	case "counter":
 		if counter, ok := m.counters[metric.ID]; !ok {

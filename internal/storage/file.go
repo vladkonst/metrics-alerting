@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"time"
 
+	"github.com/vladkonst/metrics-alerting/handlers"
 	"github.com/vladkonst/metrics-alerting/internal/models"
 )
 
@@ -15,18 +17,18 @@ type FileManager struct {
 	Metrics       map[string]models.Metrics `json:"metrics"`
 }
 
-func NewFileManager(f string, r bool, s int, c *chan models.Metrics) (*FileManager, error) {
+func NewFileManager(f string, r bool, s int, c *chan models.Metrics, storage handlers.MetricRepository) (*FileManager, error) {
 	metrics := make(map[string]models.Metrics)
 	fm := FileManager{f, s, c, metrics}
 	if r {
-		if err := fm.InitMetrics(); err != nil {
+		if err := fm.InitMetrics(storage); err != nil {
 			return nil, err
 		}
 	}
 	return &fm, nil
 }
 
-func (fm *FileManager) InitMetrics() error {
+func (fm *FileManager) InitMetrics(storage handlers.MetricRepository) error {
 	file, err := os.OpenFile(fm.filePath, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -38,9 +40,8 @@ func (fm *FileManager) InitMetrics() error {
 		return err
 	}
 
-	ms := GetStorage()
 	for _, metric := range fm.Metrics {
-		_, err = ms.AddMetric(&metric)
+		_, err = storage.AddMetric(context.Background(), &metric)
 		if err != nil {
 			return err
 		}
