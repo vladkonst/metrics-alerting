@@ -48,6 +48,11 @@ func (h *Hasher) HashBody(b []byte) (string, error) {
 
 func (h *Hasher) HashMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		src := r.Header.Get("HashSHA256")
+		if src == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "error reading body", http.StatusInternalServerError)
@@ -56,7 +61,6 @@ func (h *Hasher) HashMiddleware(next http.Handler) http.Handler {
 
 		defer r.Body.Close()
 		dst, _ := h.HashBody(b)
-		src := r.Header.Get("HashSHA256")
 		if src != dst {
 			http.Error(w, "invalid hash provided", http.StatusBadRequest)
 			return
