@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,10 +83,10 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 		return
 	}
 
-	if h != nil {
-		hashedBody := h.hashBody(b)
-		req.Header.Set("HashSHA256", hex.EncodeToString(hashedBody))
-	}
+	// if h != nil {
+	// 	hashedBody := h.hashBody(b)
+	// 	req.Header.Set("HashSHA256", hex.EncodeToString(hashedBody))
+	// }
 
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
