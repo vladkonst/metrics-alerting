@@ -19,9 +19,10 @@ type ServerCfg struct {
 }
 
 func GetClientConfig() *ClientCfg {
-	intervalCfg := &ClientIntervalsCfg{ReportInterval: 10, PollInterval: 2}
+	intervalCfg := &ClientIntervalsCfg{ReportInterval: 3, PollInterval: 1}
 	flag.IntVar(&intervalCfg.ReportInterval, "r", intervalCfg.ReportInterval, "report interval to send metrics")
 	flag.IntVar(&intervalCfg.PollInterval, "p", intervalCfg.PollInterval, "poll interval to update metrics")
+	flag.IntVar(&intervalCfg.RateLimit, "l", 1, "requests rate limit number")
 	flag.StringVar(&intervalCfg.HashKey, "k", "", "hash key")
 	addr := &NetAddressCfg{Host: "localhost", Port: 8080}
 	flag.Var(addr, "a", "Server net address host:port")

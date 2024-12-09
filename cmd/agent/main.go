@@ -46,14 +46,14 @@ func (h *hasher) hashBody(body []byte) []byte {
 	return dst
 }
 
-func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int, h *hasher) {
+func sendRequest(metricsJobs chan models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int, h *hasher) {
 	if tryCount == 4 {
 		return
 	}
 
 	metrics := make([]models.Metrics, 0)
-	for _, v := range m {
-		metrics = append(metrics, v)
+	for m := range metricsJobs {
+		metrics = append(metrics, m)
 	}
 
 	b, err := json.Marshal(metrics)
@@ -99,7 +99,12 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	if err != nil {
 		var opError *net.OpError
 		if errors.As(err, &opError) && opError.Op == "dial" {
-			go sendRequest(m, serverAddr, tryCount+1, h)
+			metricsJobs := make(chan models.Metrics)
+			for _, m := range metrics {
+				metricsJobs <- m
+			}
+			close(metricsJobs)
+			go sendRequest(metricsJobs, serverAddr, tryCount+1, h)
 		}
 		return
 	}
@@ -112,43 +117,78 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	resp.Body.Close()
 }
 
-func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics, h *hasher) {
+func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics, done chan struct{}, h *hasher) {
 	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
-	metrics := make(map[string]models.Metrics)
+	metrics := make([]models.Metrics, 0)
 	for {
 		select {
+		case <-done:
+			return
 		case <-reprotTicker.C:
-			sendRequest(metrics, cfg.NetAddressCfg, 0, h)
+			metricsJobs := make(chan models.Metrics, len(metrics))
+			for _, metric := range metrics {
+				metricsJobs <- metric
+			}
+			close(metricsJobs)
+			for i := 0; i < cfg.IntervalsCfg.RateLimit; i++ {
+				sendRequest(metricsJobs, cfg.NetAddressCfg, 0, h)
+			}
 		case metric := <-*metricsCh:
-			metrics[metric.ID] = metric
+			metrics = append(metrics, metric)
 		}
 	}
 }
 
 func main() {
-	done := make(chan bool)
+	done := make(chan struct{})
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 		<-c
-		done <- true
+		close(done)
 	}()
 	cfg := configs.GetClientConfig()
 	metricsStorage := agent.NewMetricsStorage()
 	metricsStorage.InitMetrics()
-	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
 	metricsCh := make(chan models.Metrics)
 	h := NewHasher(cfg.IntervalsCfg.HashKey)
-	go func() {
-		sendMetrics(cfg, &metricsCh, h)
-	}()
 
-	for {
-		select {
-		case <-pollTicker.C:
-			metricsStorage.UpdateMetrics(&metricsCh)
-		case <-done:
-			return
+	go sendMetrics(cfg, &metricsCh, done, h)
+
+	go func(done chan struct{}) {
+		pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+		for {
+			select {
+			case <-done:
+				return
+			case <-pollTicker.C:
+				metricsStorage.UpdateRuntimeMetrics(&metricsCh)
+			}
 		}
-	}
+	}(done)
+
+	go func(done chan struct{}) {
+		pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+		for {
+			select {
+			case <-done:
+				return
+			case <-pollTicker.C:
+				err := metricsStorage.UpdatePSUtilMetrics(&metricsCh)
+				if err != nil {
+					log.Println(err)
+					close(done)
+				}
+			}
+		}
+	}(done)
+
+	<-done
+	// for {
+	// 	select {
+	// 	case <-done:
+	// 		return
+	// 	default:
+	// 	}
+	// }
 }
