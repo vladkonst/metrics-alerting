@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net"
@@ -22,14 +24,36 @@ import (
 
 var timings = []time.Duration{0, time.Second, time.Second * 3, time.Second * 5}
 
-func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int) {
+type hasher struct {
+	hash hash.Hash
+}
+
+func NewHasher(key string) *hasher {
+	if key == "" {
+		return nil
+	}
+	hash := sha256.New()
+	return &hasher{hash}
+}
+
+func (h *hasher) hashBody(body []byte) []byte {
+	_, err := h.hash.Write(body)
+	if err != nil {
+		log.Panic("failed to hash request body")
+	}
+
+	dst := h.hash.Sum(nil)
+	return dst
+}
+
+func sendRequest(metricsJobs chan models.Metrics, serverAddr *configs.NetAddressCfg, tryCount int, h *hasher) {
 	if tryCount == 4 {
 		return
 	}
 
 	metrics := make([]models.Metrics, 0)
-	for _, v := range m {
-		metrics = append(metrics, v)
+	for m := range metricsJobs {
+		metrics = append(metrics, m)
 	}
 
 	b, err := json.Marshal(metrics)
@@ -59,6 +83,11 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 		return
 	}
 
+	// if h != nil {
+	// 	hashedBody := h.hashBody(b)
+	// 	req.Header.Set("HashSHA256", hex.EncodeToString(hashedBody))
+	// }
+
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
@@ -70,7 +99,12 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	if err != nil {
 		var opError *net.OpError
 		if errors.As(err, &opError) && opError.Op == "dial" {
-			go sendRequest(m, serverAddr, tryCount+1)
+			metricsJobs := make(chan models.Metrics)
+			for _, m := range metrics {
+				metricsJobs <- m
+			}
+			close(metricsJobs)
+			go sendRequest(metricsJobs, serverAddr, tryCount+1, h)
 		}
 		return
 	}
@@ -83,43 +117,78 @@ func sendRequest(m map[string]models.Metrics, serverAddr *configs.NetAddressCfg,
 	resp.Body.Close()
 }
 
-func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics) {
+func sendMetrics(cfg *configs.ClientCfg, metricsCh *chan models.Metrics, done chan struct{}, h *hasher) {
 	reprotTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.ReportInterval) * time.Second)
-	metrics := make(map[string]models.Metrics)
+	metrics := make([]models.Metrics, 0)
 	for {
 		select {
+		case <-done:
+			return
 		case <-reprotTicker.C:
-			sendRequest(metrics, cfg.NetAddressCfg, 0)
+			metricsJobs := make(chan models.Metrics, len(metrics))
+			for _, metric := range metrics {
+				metricsJobs <- metric
+			}
+			close(metricsJobs)
+			for i := 0; i < cfg.IntervalsCfg.RateLimit; i++ {
+				sendRequest(metricsJobs, cfg.NetAddressCfg, 0, h)
+			}
 		case metric := <-*metricsCh:
-			metrics[metric.ID] = metric
+			metrics = append(metrics, metric)
 		}
 	}
 }
 
 func main() {
-	done := make(chan bool)
+	done := make(chan struct{})
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 		<-c
-		done <- true
+		close(done)
 	}()
 	cfg := configs.GetClientConfig()
 	metricsStorage := agent.NewMetricsStorage()
 	metricsStorage.InitMetrics()
-	pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
 	metricsCh := make(chan models.Metrics)
+	h := NewHasher(cfg.IntervalsCfg.HashKey)
 
-	go func() {
-		sendMetrics(cfg, &metricsCh)
-	}()
+	go sendMetrics(cfg, &metricsCh, done, h)
 
-	for {
-		select {
-		case <-pollTicker.C:
-			metricsStorage.UpdateMetrics(&metricsCh)
-		case <-done:
-			return
+	go func(done chan struct{}) {
+		pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+		for {
+			select {
+			case <-done:
+				return
+			case <-pollTicker.C:
+				metricsStorage.UpdateRuntimeMetrics(&metricsCh)
+			}
 		}
-	}
+	}(done)
+
+	go func(done chan struct{}) {
+		pollTicker := time.NewTicker(time.Duration(cfg.IntervalsCfg.PollInterval) * time.Second)
+		for {
+			select {
+			case <-done:
+				return
+			case <-pollTicker.C:
+				err := metricsStorage.UpdatePSUtilMetrics(&metricsCh)
+				if err != nil {
+					log.Println(err)
+					close(done)
+				}
+			}
+		}
+	}(done)
+
+	<-done
+	// for {
+	// 	select {
+	// 	case <-done:
+	// 		return
+	// 	default:
+	// 	}
+	// }
 }
